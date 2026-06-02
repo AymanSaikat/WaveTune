@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSessionTimer } from '../hooks/useSessionTimer';
 import { 
@@ -104,7 +105,7 @@ export default function AccountView({
 
     setIsUpdatingPass(true);
     try {
-      const res = await fetch('/api/admin/change-password', {
+      const res = await apiFetch('/api/admin/change-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

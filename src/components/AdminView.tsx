@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Socket } from 'socket.io-client';
 import { Track, PlaybackState, PairedDevice } from '../types';
+import { apiFetch } from '../utils';
 import GlassCard from './GlassCard';
 import WaveTuneLogo from './WaveTuneLogo';
 import {
@@ -60,7 +61,7 @@ export default function AdminView({ socket, queue, playbackState, devices, onAle
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
-      const res = await fetch('/api/admin/history');
+      const res = await apiFetch('/api/admin/history');
       if (res.ok) {
         const data = await res.json();
         setHistoryList(data.history || []);
@@ -157,7 +158,7 @@ export default function AdminView({ socket, queue, playbackState, devices, onAle
 
     setIsLoggingIn(true);
     try {
-      const res = await fetch('/api/admin/login', {
+      const res = await apiFetch('/api/admin/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -19,7 +19,7 @@ import {
   Moon
 } from 'lucide-react';
 
-interface AdvancedSettingsProps {
+interface SettingsProps {
   socket: Socket | null;
   queue: Track[];
   playbackState: PlaybackState;
@@ -27,9 +27,11 @@ interface AdvancedSettingsProps {
   theme: 'light' | 'dark';
   activeStreamLimit: string;
   setActiveStreamLimit: (limit: string) => void;
+  backendUrl: string;
+  setBackendUrl: (url: string) => void;
 }
 
-export default function AdvancedSettings({
+export default function Settings({
   socket,
   queue,
   playbackState,
@@ -37,11 +39,14 @@ export default function AdvancedSettings({
   theme,
   activeStreamLimit,
   setActiveStreamLimit,
-}: AdvancedSettingsProps) {
+  backendUrl,
+  setBackendUrl,
+}: SettingsProps) {
   const [allowDuplicates, setAllowDuplicates] = useState(false);
   const [systemAutoplay, setSystemAutoplay] = useState(true);
   const [maxVolumeLimit, setMaxVolumeLimit] = useState(100);
   const [isClearing, setIsClearing] = useState(false);
+  const [tempBackendUrl, setTempBackendUrl] = useState(backendUrl);
 
   const pendingCount = queue.filter(t => t.status === 'queued').length;
   const playedCount = queue.filter(t => t.status === 'played').length;
@@ -67,10 +72,10 @@ export default function AdvancedSettings({
       {/* Dynamic Header Description */}
       <div>
         <h2 className={`text-2xl font-bold font-sans tracking-tight ${theme === 'light' ? 'text-black' : 'text-white'}`}>
-          System Core & Advanced Configurations
+          System Core & Settings
         </h2>
         <p className={`text-xs mt-1.5 font-sans leading-relaxed ${theme === 'light' ? 'text-neutral-600' : 'text-neutral-400'}`}>
-          Configure structural playback regulations, CMS database records, and monitor live streaming hardware telemetry.
+          Configure structural playback regulations, CMS database records, and control connection profiles.
         </p>
       </div>
 
@@ -179,6 +184,45 @@ export default function AdvancedSettings({
                   <option value="100">100 Songs Max</option>
                   <option value="unlimited">Unlimited requests</option>
                 </select>
+              </div>
+
+              {/* Directive 5: GitHub Pages & Custom Backend Connection URL */}
+              <div className="flex flex-col gap-3 py-3 pt-5 border-t border-dashed border-neutral-500/10">
+                <div>
+                  <span className={`block text-sm font-semibold mb-0.5 flex items-center gap-1.5 ${theme === 'light' ? 'text-black' : 'text-white'}`}>
+                    <Server className="w-4 h-4 text-purple-400" /> Backend Service Connection URL
+                  </span>
+                  <span className="text-[11px] text-neutral-400 font-sans block leading-relaxed max-w-xl">
+                    Configure the active API / Socket.io server to bridge your audio system. This is crucial when hosting this app on static providers such as **GitHub Pages**, letting your static frontend speak to your self-hosted backend.
+                  </span>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 mt-1">
+                  <input
+                    type="text"
+                    value={tempBackendUrl}
+                    onChange={(e) => setTempBackendUrl(e.target.value)}
+                    className={`border rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-pink-500 transition-all font-mono grow ${
+                      theme === 'light' ? 'bg-white border-neutral-300 text-neutral-900' : 'bg-black/30 border-white/10 text-white'
+                    }`}
+                    placeholder="e.g. http://localhost:3000"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!tempBackendUrl.trim()) {
+                        onAlert('Backend URL cannot be empty!', 'error');
+                        return;
+                      }
+                      setBackendUrl(tempBackendUrl.trim());
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 text-white rounded-xl text-xs font-semibold cursor-pointer shrink-0 shadow-md transition-all active:scale-95"
+                  >
+                    Save URL
+                  </button>
+                </div>
+                <p className="text-[10px] text-neutral-500 font-mono">
+                  * Current active link: <span className="text-purple-400">{backendUrl}</span>
+                </p>
               </div>
             </div>
           </GlassCard>

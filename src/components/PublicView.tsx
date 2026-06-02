@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Socket } from 'socket.io-client';
 import { Track, PlaybackState } from '../types';
+import { apiFetch } from '../utils';
 import GlassCard from './GlassCard';
 import { Search, Plus, ThumbsUp, Music, User, Clock, Check, Loader2, Play, Pause } from 'lucide-react';
 
@@ -35,7 +36,7 @@ export default function PublicView({ socket, queue, playbackState, onAlert, them
     setResolvedTrack(null);
 
     try {
-      const response = await fetch('/api/resolve', {
+      const response = await apiFetch('/api/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQuery }),

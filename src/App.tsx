@@ -1,16 +1,17 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { Track, PlaybackState, PairedDevice } from './types';
+import { getBackendUrl, apiFetch } from './utils';
 import PublicView from './components/PublicView';
 import AdminView from './components/AdminView';
 import PlayerView from './components/PlayerView';
-import AdvancedSettings from './components/AdvancedSettings';
+import Settings from './components/Settings';
 import AccountView from './components/AccountView';
 import DashboardView from './components/DashboardView';
 import WaveTuneLogo from './components/WaveTuneLogo';
 import {
   Music,
-  Settings,
+  Settings as SettingsIcon,
   AlertTriangle,
   Sparkles,
   Lock,
@@ -50,6 +51,9 @@ export default function App() {
   const [djName, setDjName] = useState(() => localStorage.getItem('sonicstream_dj_name') || 'Ayman Saikat');
   const [roomDesc, setRoomDesc] = useState('WaveTune Live Audio System - Broadcast Terminal');
   const [activeStreamLimit, setActiveStreamLimit] = useState('unlimited');
+
+  // Backend connection url for GitHub Pages compatibility
+  const [backendUrl, setBackendUrlState] = useState(() => getBackendUrl());
 
   // Broadcasting Hub Link states
   const [broadcastingHubLink, setBroadcastingHubLink] = useState(() => localStorage.getItem('sonicstream_broadcasting_hub_link') || 'https://github.com/AymanSaikat');
@@ -99,8 +103,8 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    // Connect to WebSocket pointing directly to the browser's hosting origin domain
-    const socketInstance = io(window.location.origin, {
+    // Connect to WebSocket pointing dynamically to the configured backendURL
+    const socketInstance = io(backendUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
@@ -140,7 +144,7 @@ export default function App() {
 
     setIsLoggingIn(true);
     try {
-      const res = await fetch('/api/admin/login', {
+      const res = await apiFetch('/api/admin/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -308,7 +312,7 @@ export default function App() {
                       : 'text-neutral-400 hover:text-white'
                   }`}
                 >
-                  <Settings className="w-3.5 h-3.5" /> Advanced Settings
+                  <SettingsIcon className="w-3.5 h-3.5" /> Settings
                 </button>
                 <button
                   type="button"
@@ -361,7 +365,7 @@ export default function App() {
             {/* Center Title */}
             <div className="text-center">
               <h1 className={`text-[13px] uppercase tracking-widest font-mono font-bold ${theme === 'light' ? 'text-neutral-900' : 'text-white'}`}>
-                {cmsTab === 'dashboard' ? 'Overview' : cmsTab === 'console' ? 'DJ Console' : cmsTab === 'output' ? 'Output Player' : cmsTab === 'settings' ? 'Advanced Settings' : 'Account'}
+                {cmsTab === 'dashboard' ? 'Overview' : cmsTab === 'console' ? 'DJ Console' : cmsTab === 'output' ? 'Output Player' : cmsTab === 'settings' ? 'Settings' : 'Account'}
               </h1>
             </div>
  
@@ -529,7 +533,7 @@ export default function App() {
               )}
 
               {cmsTab === 'settings' && (
-                <AdvancedSettings
+                <Settings
                   socket={socket}
                   queue={queue}
                   playbackState={playbackState}
@@ -537,6 +541,12 @@ export default function App() {
                   theme={theme}
                   activeStreamLimit={activeStreamLimit}
                   setActiveStreamLimit={setActiveStreamLimit}
+                  backendUrl={backendUrl}
+                  setBackendUrl={(newUrl) => {
+                    localStorage.setItem('sonicstream_backend_url', newUrl);
+                    setBackendUrlState(newUrl);
+                    showAlert('Backend URL updated! Refresh to restream on this connection.', 'success');
+                  }}
                 />
               )}
 
@@ -630,7 +640,7 @@ export default function App() {
                   : 'text-neutral-400 dark:text-[#8E8E93]'
               }`}
             >
-              <Settings className="w-5 h-5" />
+              <SettingsIcon className="w-5 h-5" />
               <span className="text-[9px] mt-0.5 tracking-tight font-sans font-medium">Settings</span>
             </button>
 
