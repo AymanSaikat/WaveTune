@@ -303,7 +303,7 @@ export default function AdminView({ socket, queue, playbackState, devices, onAle
          ========================================= */}
       <div className="lg:hidden flex flex-col w-full bg-[#F2F2F7] dark:bg-black relative select-none pb-28 pt-2 px-4">
         
-        {/* Top Segmented Control Pill for DJ Console Tab: Live Player vs Screen Queue */}
+        {/* Top Segmented Control Pill for Console Tab: Live Player vs Screen Queue */}
         <div className="flex p-0.5 bg-neutral-250/80 dark:bg-neutral-900 rounded-full border border-neutral-300/30 dark:border-white/5 shadow-inner mb-4 mt-1">
           <button
             type="button"

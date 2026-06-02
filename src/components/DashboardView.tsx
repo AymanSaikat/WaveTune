@@ -287,7 +287,7 @@ export default function DashboardView({
                   onClick={() => onNavigateTab('console')}
                   className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-pink-500 hover:bg-pink-650 shadow-md cursor-pointer transition-all"
                 >
-                  <ListMusic className="w-3.5 h-3.5" /> Navigate to DJ Console
+                  <ListMusic className="w-3.5 h-3.5" /> Navigate to Console
                 </button>
               </div>
             )}

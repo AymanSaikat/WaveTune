@@ -108,6 +108,7 @@ export default function App() {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
+      withCredentials: true,
     });
 
     socketInstance.on('connect', () => {
@@ -290,7 +291,7 @@ export default function App() {
                       : 'text-neutral-400 hover:text-white'
                   }`}
                 >
-                  <Terminal className="w-3.5 h-3.5" /> DJ Console
+                  <Terminal className="w-3.5 h-3.5" /> Console
                 </button>
                 <button
                   type="button"
@@ -301,7 +302,7 @@ export default function App() {
                       : 'text-neutral-400 hover:text-white'
                   }`}
                 >
-                  <Smartphone className="w-3.5 h-3.5" /> Output Player
+                  <Smartphone className="w-3.5 h-3.5" /> Output
                 </button>
                 <button
                   type="button"
@@ -365,7 +366,7 @@ export default function App() {
             {/* Center Title */}
             <div className="text-center">
               <h1 className={`text-[13px] uppercase tracking-widest font-mono font-bold ${theme === 'light' ? 'text-neutral-900' : 'text-white'}`}>
-                {cmsTab === 'dashboard' ? 'Overview' : cmsTab === 'console' ? 'DJ Console' : cmsTab === 'output' ? 'Output Player' : cmsTab === 'settings' ? 'Settings' : 'Account'}
+                {cmsTab === 'dashboard' ? 'Overview' : cmsTab === 'console' ? 'Console' : cmsTab === 'output' ? 'Output' : cmsTab === 'settings' ? 'Settings' : 'Account'}
               </h1>
             </div>
  
