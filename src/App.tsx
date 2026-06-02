@@ -135,7 +135,7 @@ export default function App() {
     return () => {
       socketInstance.disconnect();
     };
-  }, []);
+  }, [backendUrl]);
 
   // Handle Admin Passcode Login
   const handleAdminLogin = async (e: React.FormEvent) => {

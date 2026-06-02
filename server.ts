@@ -152,6 +152,10 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
   res.setHeader("Access-Control-Allow-Methods", "*");
+  if (req.method === "OPTIONS") {
+    res.sendStatus(200);
+    return;
+  }
   next();
 });
 

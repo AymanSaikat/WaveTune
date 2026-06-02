@@ -3,6 +3,10 @@ export function getBackendUrl(): string {
   if (saved) {
     return saved.replace(/\/+$/, '');
   }
+  const hostname = window.location.hostname;
+  if (hostname.endsWith('.github.io') || (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.endsWith('.run.app'))) {
+    return 'https://ais-pre-ghbownajglsozvqeylynw7-256061441880.asia-southeast1.run.app';
+  }
   return window.location.origin;
 }
 
