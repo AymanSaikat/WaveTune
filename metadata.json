@@ -1,0 +1,6 @@
+{
+  "name": "WaveTune",
+  "description": "Apple-inspired Music Request Platform featuring a real-time admin CMS, public request interface, and synchronized playback player device bridge.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
