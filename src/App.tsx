@@ -747,17 +747,22 @@ export default function App() {
                     type="text"
                     value={modalTempUrl}
                     onChange={(e) => setModalTempUrl(e.target.value)}
-                    placeholder="e.g. https://ais-pre-...run.app"
+                    placeholder="Leave blank for same-domain relative paths (highly recommended)"
                     className="w-full bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 rounded-2xl py-2.5 px-4 text-neutral-900 dark:text-white placeholder-neutral-405 dark:placeholder-white/20 text-xs focus:outline-none focus:border-purple-500 transition-all font-mono"
                   />
                   <button
                     type="button"
                     onClick={() => {
-                      if (!modalTempUrl.trim()) return;
-                      localStorage.setItem('sonicstream_backend_url', modalTempUrl.trim());
-                      setBackendUrlState(modalTempUrl.trim());
+                      const value = modalTempUrl.trim();
+                      if (!value) {
+                        localStorage.removeItem('sonicstream_backend_url');
+                        setBackendUrlState('');
+                      } else {
+                        localStorage.setItem('sonicstream_backend_url', value);
+                        setBackendUrlState(value);
+                      }
                       setIsServerModalOpen(false);
-                      showAlert('Backend connection target shifted! Re-synchronizing...', 'success');
+                      showAlert('Backend connection target updated successfully! Re-synchronizing...', 'success');
                     }}
                     className="px-4 py-2.5 bg-neutral-900 dark:bg-white text-white dark:text-black rounded-2xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
                   >
@@ -774,7 +779,7 @@ export default function App() {
                 
                 {/* Button 1: Grant permissions */}
                 <a
-                  href={`${backendUrl}/api/queue`}
+                  href={`${backendUrl || window.location.origin}/api/queue`}
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => setIsServerModalOpen(false)}
@@ -792,36 +797,35 @@ export default function App() {
 
                 {/* Preset Fast Select Buttons */}
                 <span className="block text-[11px] font-bold text-neutral-400 dark:text-white/30 uppercase tracking-wider mt-4">
-                  Quick Switch Local / Shared Presets:
+                  Quick Switch Connection Presets:
                 </span>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => {
-                      const devUrl = 'https://ais-dev-ghbownajglsozvqeylynw7-256061441880.asia-southeast1.run.app';
-                      setModalTempUrl(devUrl);
-                      localStorage.setItem('sonicstream_backend_url', devUrl);
-                      setBackendUrlState(devUrl);
+                      setModalTempUrl('');
+                      localStorage.removeItem('sonicstream_backend_url');
+                      setBackendUrlState('');
                       setIsServerModalOpen(false);
-                      showAlert('Switched backend to Development server!', 'success');
+                      showAlert('Reset connection to relative same-domain pathway!', 'success');
                     }}
                     className="py-2.5 px-3 border border-neutral-300 dark:border-white/10 rounded-2xl text-[11px] font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/5 transition-all text-center"
                   >
-                    Development Server
+                    Relative Default (Recommended)
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      const preUrl = 'https://ais-pre-ghbownajglsozvqeylynw7-256061441880.asia-southeast1.run.app';
-                      setModalTempUrl(preUrl);
-                      localStorage.setItem('sonicstream_backend_url', preUrl);
-                      setBackendUrlState(preUrl);
+                      const rootUrl = window.location.origin;
+                      setModalTempUrl(rootUrl);
+                      localStorage.setItem('sonicstream_backend_url', rootUrl);
+                      setBackendUrlState(rootUrl);
                       setIsServerModalOpen(false);
-                      showAlert('Switched backend to Shared/Production server!', 'success');
+                      showAlert(`Switched backend specifically to App host origin: ${rootUrl}`, 'success');
                     }}
                     className="py-2.5 px-3 border border-neutral-300 dark:border-white/10 rounded-2xl text-[11px] font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/5 transition-all text-center"
                   >
-                    Shared Server
+                    Specify Host App Origin
                   </button>
                 </div>
               </div>

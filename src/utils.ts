@@ -3,14 +3,25 @@ export function getBackendUrl(): string {
   if (saved) {
     return saved.replace(/\/+$/, '');
   }
-  const hostname = window.location.hostname;
-  if (hostname.endsWith('.github.io') || (hostname !== 'localhost' && hostname !== '127.0.0.1' && !hostname.endsWith('.run.app'))) {
-    return 'https://ais-pre-ghbownajglsozvqeylynw7-256061441880.asia-southeast1.run.app';
+  
+  // Allow configure via environment variable for custom static or custom domain deployments
+  const envUrl = (import.meta as any).env?.VITE_BACKEND_URL;
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, '');
   }
-  return window.location.origin;
+
+  // Under normal full-stack deployments (like the AI Studio container or unified cloud targets),
+  // returning an empty string enables clean, relative backend API routing.
+  return '';
+}
+
+export function getBackendUrlDisplay(): string {
+  return getBackendUrl() || window.location.origin;
 }
 
 export function apiFetch(urlPath: string, options?: RequestInit): Promise<Response> {
   const normalizedPath = urlPath.startsWith('/') ? urlPath : '/' + urlPath;
-  return fetch(`${getBackendUrl()}${normalizedPath}`, options);
+  const backendUrl = getBackendUrl();
+  const targetUrl = backendUrl ? `${backendUrl}${normalizedPath}` : normalizedPath;
+  return fetch(targetUrl, options);
 }

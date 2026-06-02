@@ -204,16 +204,18 @@ export default function Settings({
                     className={`border rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-pink-500 transition-all font-mono grow ${
                       theme === 'light' ? 'bg-white border-neutral-300 text-neutral-900' : 'bg-black/30 border-white/10 text-white'
                     }`}
-                    placeholder="e.g. http://localhost:3000"
+                    placeholder="Leave empty for Same-Domain relative routing (Default)"
                   />
                   <button
                     type="button"
                     onClick={() => {
-                      if (!tempBackendUrl.trim()) {
-                        onAlert('Backend URL cannot be empty!', 'error');
-                        return;
+                      const value = tempBackendUrl.trim();
+                      setBackendUrl(value);
+                      if (!value) {
+                        onAlert('Backend URL has been reset to same-domain relative paths.', 'success');
+                      } else {
+                        onAlert(`Backend URL updated to: ${value}`, 'success');
                       }
-                      setBackendUrl(tempBackendUrl.trim());
                     }}
                     className="px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 text-white rounded-xl text-xs font-semibold cursor-pointer shrink-0 shadow-md transition-all active:scale-95"
                   >
@@ -221,7 +223,7 @@ export default function Settings({
                   </button>
                 </div>
                 <p className="text-[10px] text-neutral-500 font-mono">
-                  * Current active link: <span className="text-purple-400">{backendUrl}</span>
+                  * Current active link: <span className="text-purple-400">{backendUrl || 'Same-Domain / Relative Roots (Highly recommended)'}</span>
                 </p>
               </div>
             </div>
