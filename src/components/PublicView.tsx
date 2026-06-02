@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Socket } from 'socket.io-client';
 import { Track, PlaybackState } from '../types';
-import { apiFetch } from '../utils';
+import { apiFetch, getBackendUrl } from '../utils';
 import GlassCard from './GlassCard';
 import { Search, Plus, ThumbsUp, Music, User, Clock, Check, Loader2, Play, Pause } from 'lucide-react';
 
@@ -23,6 +23,10 @@ export default function PublicView({ socket, queue, playbackState, onAlert, them
     youtubeId: string;
     artworkUrl: string;
     duration: number;
+    originalName?: string;
+    originalArtist?: string;
+    originalCover?: string;
+    originalLabel?: string;
   } | null>(null);
 
   const activeTrack = queue.find(t => t.id === playbackState.currentTrackId);
@@ -43,16 +47,24 @@ export default function PublicView({ socket, queue, playbackState, onAlert, them
       });
 
       if (!response.ok) {
-        throw new Error('Failed to resolve song metadata');
+        if (response.status === 404) {
+          throw new Error('Server returned error 404 (Not Found). The search/resolve service is unavailable or your active server is misconfigured.');
+        } else if (response.status === 500) {
+          throw new Error('Server returned error 500 (Internal Server Error). The resolveTrackDetails function failed. Check the server terminal logs or verify your server settings.');
+        } else if (response.status === 502) {
+          throw new Error('Server returned error 502 (Bad Gateway). The proxy gateway is unable to link back to the active Cloud Run server instance.');
+        } else {
+          throw new Error(`Server returned error ${response.status}. Please check your active server logs for this resolve request.`);
+        }
       }
 
       const data = await response.json();
       setResolvedTrack(data);
     } catch (err: any) {
-      if (err.message && (err.message.includes('fetch') || err.message.includes('Failed to fetch') || err.message.includes('resolve'))) {
-        onAlert('Connection blocked. Please click the network signal button in the header to grant required browser cookie permissions first!', 'error');
+      if (err.message && err.message.includes('Server returned error')) {
+        onAlert(err.message, 'error');
       } else {
-        onAlert(err.message || 'Error occurred searching song.', 'error');
+        onAlert(`Failed to connect to the server at ${getBackendUrl()}. Error: ${err.message || err}. Please ensure your configured backend is online and accessible.`, 'error');
       }
     } finally {
       setIsSearching(false);

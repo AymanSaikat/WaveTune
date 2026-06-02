@@ -214,6 +214,8 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
   const lowerQuery = queryClean.toLowerCase();
   
   const isUrl = queryClean.startsWith("http://") || queryClean.startsWith("https://");
+  
+  console.log(`[Resolve Engine] Starting resolution for query: "${queryClean}" (Detected isUrl: ${isUrl})`);
 
   // A. URL PERSISTENCE & OEMBED PARSING ENGINE
   if (isUrl) {
@@ -231,7 +233,9 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
 
       try {
         const oEmbedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(queryClean)}&format=json`;
+        console.log(`[Resolve Engine] Fetching YouTube oEmbed: ${oEmbedUrl}`);
         const res = await fetch(oEmbedUrl);
+        console.log(`[Resolve Engine] YouTube oEmbed Response Status: ${res.status}`);
         if (res.ok) {
           const data = await res.json() as any;
           title = data.title || title;
@@ -239,7 +243,7 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
           artworkUrl = data.thumbnail_url || artworkUrl;
         }
       } catch (err) {
-        console.error("YouTube oEmbed fetch error:", err);
+        console.error("[Resolve Engine] YouTube oEmbed fetch error:", err);
       }
 
       let previewUrl = "";
@@ -247,7 +251,10 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
       // Also try to find song specific details if the title has artist info
       try {
         const cleanTerm = title.replace(/official|video|audio|lyrics|hd|1080p|4k/gi, "").trim();
-        const iTunesRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(cleanTerm)}&entity=song&limit=1`);
+        const iTunesSearchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(cleanTerm)}&entity=song&limit=1`;
+        console.log(`[Resolve Engine] Fetching auxiliary iTunes metadata: ${iTunesSearchUrl}`);
+        const iTunesRes = await fetch(iTunesSearchUrl);
+        console.log(`[Resolve Engine] Auxiliary iTunes Response Status: ${iTunesRes.status}`);
         if (iTunesRes.ok) {
           const data = await iTunesRes.json() as any;
           if (data.results && data.results.length > 0) {
@@ -266,6 +273,7 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
         // ignore
       }
 
+      console.log(`[Resolve Engine] Successfully resolved YouTube track: "${title}" by "${artist}" (YouTube ID: ${youtubeId})`);
       return {
         title,
         artist,
@@ -290,7 +298,9 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
 
       try {
         const oEmbedUrl = `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(queryClean)}`;
+        console.log(`[Resolve Engine] Fetching SoundCloud oEmbed: ${oEmbedUrl}`);
         const res = await fetch(oEmbedUrl);
+        console.log(`[Resolve Engine] SoundCloud oEmbed Response Status: ${res.status}`);
         if (res.ok) {
           const data = await res.json() as any;
           title = data.title || title;
@@ -298,12 +308,14 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
           artworkUrl = data.thumbnail_url || artworkUrl;
         }
       } catch (err) {
-        console.error("SoundCloud oEmbed error:", err);
+        console.error("[Resolve Engine] SoundCloud oEmbed error:", err);
       }
 
       // Automatically pair SoundCloud track with live playable YouTube video feed
+      console.log(`[Resolve Engine] Querying YouTube scraper pairing for SoundCloud track: "${artist} - ${title} audio"`);
       const matchedYtId = await searchYoutubeForVideoId(`${artist} - ${title} audio`);
 
+      console.log(`[Resolve Engine] Successfully resolved SoundCloud track: "${title}" paired with YouTube ID: ${matchedYtId}`);
       return {
         title,
         artist,
@@ -327,7 +339,9 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
 
       try {
         const oEmbedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(queryClean)}`;
+        console.log(`[Resolve Engine] Fetching Spotify oEmbed: ${oEmbedUrl}`);
         const res = await fetch(oEmbedUrl);
+        console.log(`[Resolve Engine] Spotify oEmbed Response Status: ${res.status}`);
         if (res.ok) {
           const data = await res.json() as any;
           if (data.title) {
@@ -342,12 +356,14 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
           if (data.thumbnail_url) artworkUrl = data.thumbnail_url;
         }
       } catch (err) {
-        console.error("Spotify oEmbed error:", err);
+        console.error("[Resolve Engine] Spotify oEmbed error:", err);
       }
 
       // Convert Spotify reference into a playable stream matched dynamically on YouTube
+      console.log(`[Resolve Engine] Querying YouTube scraper pairing for Spotify track: "${artist} - ${title} audio"`);
       const matchedYtId = await searchYoutubeForVideoId(`${artist} - ${title} audio`);
 
+      console.log(`[Resolve Engine] Successfully resolved Spotify track: "${title}" paired with YouTube ID: ${matchedYtId}`);
       return {
         title,
         artist,
@@ -372,6 +388,7 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
       }
     } catch {}
 
+    console.log(`[Resolve Engine] Pair Generic Link "${queryClean}" via YouTube fallback query: "${titleFallback}"`);
     const matchedYtId = await searchYoutubeForVideoId(titleFallback);
     const coverUrl = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600";
 
@@ -392,7 +409,9 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
   // Check iTunes Search API for precise cover art + tags
   try {
     const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(queryClean)}&entity=song&limit=1`;
+    console.log(`[Resolve Engine] Querying main iTunes Search API: ${itunesUrl}`);
     const itunesRes = await fetch(itunesUrl);
+    console.log(`[Resolve Engine] Main iTunes Search Response Status: ${itunesRes.status}`);
     if (itunesRes.ok) {
       const data = await itunesRes.json() as any;
       if (data.results && data.results.length > 0) {
@@ -404,8 +423,10 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
         const recordLabel = info.collectionName || info.primaryGenreName || "Independent Label";
 
         // Query YouTube dynamically for this track name and artist audio
+        console.log(`[Resolve Engine] iTunes music info matched! Pairing metadata dynamically with YouTube video scraper: "${artist} ${title} audio"`);
         const matchedYtId = await searchYoutubeForVideoId(`${artist} ${title} audio`);
         
+        console.log(`[Resolve Engine] Successfully matched "${title}" with YouTube ID: ${matchedYtId}`);
         return {
           title,
           artist,
@@ -418,10 +439,12 @@ async function resolveTrackDetails(searchQuery: string): Promise<{
           originalLabel: recordLabel,
           previewUrl: info.previewUrl || undefined
         };
+      } else {
+        console.log(`[Resolve Engine] No iTunes results found for query: "${queryClean}"`);
       }
     }
   } catch (err) {
-    console.error("iTunes Search API search failure, falling back to YouTube direct matching:", err);
+    console.error("[Resolve Engine] iTunes Search API search failure, falling back to YouTube direct matching:", err);
   }
 
   // Local Offline Searches (Very robust static matcher)

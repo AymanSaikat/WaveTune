@@ -177,8 +177,8 @@ export default function App() {
       } else {
         showAlert(data.error || 'Invalid administrator passcode.', 'error');
       }
-    } catch (err) {
-      showAlert('Connection blocked. Please click the network signal button in the header to grant required browser cookie permissions!', 'error');
+    } catch (err: any) {
+      showAlert(`Failed to reach the authentication server at ${backendUrl}. Error: ${err.message || err}. Please ensure your configured backend is online and accessible.`, 'error');
     } finally {
       setIsLoggingIn(false);
     }

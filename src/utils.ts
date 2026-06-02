@@ -12,9 +12,5 @@ export function getBackendUrl(): string {
 
 export function apiFetch(urlPath: string, options?: RequestInit): Promise<Response> {
   const normalizedPath = urlPath.startsWith('/') ? urlPath : '/' + urlPath;
-  const mergedOptions: RequestInit = {
-    ...options,
-    credentials: 'include'
-  };
-  return fetch(`${getBackendUrl()}${normalizedPath}`, mergedOptions);
+  return fetch(`${getBackendUrl()}${normalizedPath}`, options);
 }
