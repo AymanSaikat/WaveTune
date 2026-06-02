@@ -49,7 +49,11 @@ export default function PublicView({ socket, queue, playbackState, onAlert, them
       const data = await response.json();
       setResolvedTrack(data);
     } catch (err: any) {
-      onAlert(err.message || 'Error occurred searching song.', 'error');
+      if (err.message && (err.message.includes('fetch') || err.message.includes('Failed to fetch') || err.message.includes('resolve'))) {
+        onAlert('Connection blocked. Please click the network signal button in the header to grant required browser cookie permissions first!', 'error');
+      } else {
+        onAlert(err.message || 'Error occurred searching song.', 'error');
+      }
     } finally {
       setIsSearching(false);
     }

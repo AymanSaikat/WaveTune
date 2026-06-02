@@ -26,7 +26,9 @@ import {
   Sun,
   Moon,
   User,
-  LayoutDashboard
+  LayoutDashboard,
+  ChevronRight,
+  Server
 } from 'lucide-react';
 
 export default function App() {
@@ -73,6 +75,11 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
+  // Server connection diagnostics & override states
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [modalTempUrl, setModalTempUrl] = useState(backendUrl);
+
   // Flash Alert System
   const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const alertTimeoutRef = useRef<number | null>(null);
@@ -113,6 +120,7 @@ export default function App() {
 
     socketInstance.on('connect', () => {
       console.log('Real-time connection pipeline established with socket ID:', socketInstance.id);
+      setIsSocketConnected(true);
     });
 
     socketInstance.on('queue_update', (updatedQueue: Track[]) => {
@@ -129,6 +137,11 @@ export default function App() {
 
     socketInstance.on('disconnect', () => {
       console.warn('Real-time synchronization socket disconnected.');
+      setIsSocketConnected(false);
+    });
+
+    socketInstance.on('connect_error', () => {
+      setIsSocketConnected(false);
     });
 
     setSocket(socketInstance);
@@ -165,7 +178,7 @@ export default function App() {
         showAlert(data.error || 'Invalid administrator passcode.', 'error');
       }
     } catch (err) {
-      showAlert('Failed to connect to authentication server.', 'error');
+      showAlert('Connection blocked. Please click the network signal button in the header to grant required browser cookie permissions!', 'error');
     } finally {
       setIsLoggingIn(false);
     }
@@ -225,6 +238,25 @@ export default function App() {
 
             {/* Actions group */}
             <div className="flex items-center gap-2 md:gap-3 shrink-0">
+              {/* Server Connection Indicator */}
+              <button
+                type="button"
+                onClick={() => {
+                  setModalTempUrl(backendUrl);
+                  setIsServerModalOpen(true);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold rounded-full border transition-all cursor-pointer ${
+                  isSocketConnected
+                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+                    : 'bg-amber-500/10 border-amber-500/25 text-amber-500 animate-pulse'
+                }`}
+                title="Configure connection settings"
+              >
+                <div className={`w-1.5 h-1.5 rounded-full ${isSocketConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                <span className="hidden sm:inline">{isSocketConnected ? 'Server Online' : 'Server Offline'}</span>
+                <span className="sm:hidden">{isSocketConnected ? 'Online' : 'Offline'}</span>
+              </button>
+
               {/* Prominent Theme Toggle */}
               <button
                 type="button"
@@ -330,6 +362,24 @@ export default function App() {
 
               {/* Action buttons */}
               <div className="flex items-center justify-center gap-2">
+                {/* Server Connection Indicator */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalTempUrl(backendUrl);
+                    setIsServerModalOpen(true);
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+                    isSocketConnected
+                      ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+                      : 'bg-amber-500/10 border-amber-500/25 text-amber-500 animate-pulse'
+                  }`}
+                  title="Configure connection settings"
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full ${isSocketConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                  <span>{isSocketConnected ? 'Online' : 'Offline'}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -659,6 +709,133 @@ export default function App() {
               <User className="w-5 h-5" />
               <span className="text-[9px] mt-0.5 tracking-tight font-sans font-medium">Account</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Server Connection Override & Troubleshooting Modal */}
+      {isServerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in text-left">
+          <div className="bg-white dark:bg-[#0b0c0e] border border-neutral-200 dark:border-white/10 p-6 max-w-md w-full rounded-3xl shadow-2xl relative z-20">
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2 font-sans">
+              <Server className="w-5 h-5 text-purple-400" /> Server Connection Hub
+            </h3>
+            
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 font-sans leading-relaxed">
+              WaveTune uses a separate, self-hosted system on Google Cloud Run to handle real-time playback syncing, song resolving, and metadata fetching.
+            </p>
+
+            <div className="space-y-4 mt-4">
+              {/* Current Status Indicator Row */}
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/5">
+                <span className="text-xs font-sans text-neutral-600 dark:text-neutral-400 font-medium">Pipeline Status</span>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${isSocketConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+                  <span className={`text-xs font-mono font-bold ${isSocketConnected ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {isSocketConnected ? 'ONLINE' : 'DISCONNECTED'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Backend URL Input Row */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-neutral-400 dark:text-white/40 uppercase tracking-widest">
+                  Backend Service URL
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={modalTempUrl}
+                    onChange={(e) => setModalTempUrl(e.target.value)}
+                    placeholder="e.g. https://ais-pre-...run.app"
+                    className="w-full bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 rounded-2xl py-2.5 px-4 text-neutral-900 dark:text-white placeholder-neutral-405 dark:placeholder-white/20 text-xs focus:outline-none focus:border-purple-500 transition-all font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!modalTempUrl.trim()) return;
+                      localStorage.setItem('sonicstream_backend_url', modalTempUrl.trim());
+                      setBackendUrlState(modalTempUrl.trim());
+                      setIsServerModalOpen(false);
+                      showAlert('Backend connection target shifted! Re-synchronizing...', 'success');
+                    }}
+                    className="px-4 py-2.5 bg-neutral-900 dark:bg-white text-white dark:text-black rounded-2xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    Apply Target
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons to troubleshoot & grant permissions (crucial for iframe cookie limits) */}
+              <div className="space-y-2.5 pt-2">
+                <span className="block text-[11px] font-bold text-neutral-400 dark:text-white/30 uppercase tracking-wider">
+                  Troubleshooting Checklist:
+                </span>
+                
+                {/* Button 1: Grant permissions */}
+                <a
+                  href={`${backendUrl}/api/queue`}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setIsServerModalOpen(false)}
+                  className="flex items-center justify-between gap-2 p-3 text-xs font-medium text-pink-400 bg-pink-500/5 hover:bg-pink-500/10 border border-pink-500/20 rounded-2xl transition-all"
+                >
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-pink-400 shrink-0" />
+                    <span>1. Grant Browser Cookie Permissions</span>
+                  </div>
+                  <ChevronRight className="w-4 h-4" />
+                </a>
+                <p className="text-[10px] text-neutral-400 dark:text-neutral-500 font-sans leading-relaxed px-1">
+                  * Browsers block cross-site connections in iframes. Open the target back-link, click the <strong className="text-neutral-800 dark:text-white font-semibold">"Grant permission"</strong> button on the white setup screen, and return to this page.
+                </p>
+
+                {/* Preset Fast Select Buttons */}
+                <span className="block text-[11px] font-bold text-neutral-400 dark:text-white/30 uppercase tracking-wider mt-4">
+                  Quick Switch Local / Shared Presets:
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const devUrl = 'https://ais-dev-ghbownajglsozvqeylynw7-256061441880.asia-southeast1.run.app';
+                      setModalTempUrl(devUrl);
+                      localStorage.setItem('sonicstream_backend_url', devUrl);
+                      setBackendUrlState(devUrl);
+                      setIsServerModalOpen(false);
+                      showAlert('Switched backend to Development server!', 'success');
+                    }}
+                    className="py-2.5 px-3 border border-neutral-300 dark:border-white/10 rounded-2xl text-[11px] font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/5 transition-all text-center"
+                  >
+                    Development Server
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const preUrl = 'https://ais-pre-ghbownajglsozvqeylynw7-256061441880.asia-southeast1.run.app';
+                      setModalTempUrl(preUrl);
+                      localStorage.setItem('sonicstream_backend_url', preUrl);
+                      setBackendUrlState(preUrl);
+                      setIsServerModalOpen(false);
+                      showAlert('Switched backend to Shared/Production server!', 'success');
+                    }}
+                    className="py-2.5 px-3 border border-neutral-300 dark:border-white/10 rounded-2xl text-[11px] font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/5 transition-all text-center"
+                  >
+                    Shared Server
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-neutral-200 dark:border-white/10 font-sans">
+              <button
+                type="button"
+                onClick={() => setIsServerModalOpen(false)}
+                className="px-4 py-2 bg-neutral-100 dark:bg-white/5 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
