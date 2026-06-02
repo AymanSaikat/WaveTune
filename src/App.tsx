@@ -722,17 +722,25 @@ export default function App() {
             </h3>
             
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 font-sans leading-relaxed">
-              WaveTune uses a separate, self-hosted system on Google Cloud Run to handle real-time playback syncing, song resolving, and metadata fetching.
+              WaveTune uses a custom Node.js Express server to handle real-time playback syncing, room management, and song resolving.
             </p>
 
             <div className="space-y-4 mt-4">
+              {/* GitHub Pages Specific Diagnostic Notice */}
+              {window.location.hostname.endsWith('github.io') && !backendUrl && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-neutral-700 dark:text-amber-400 rounded-2xl text-[11px] font-sans leading-relaxed">
+                  <p className="font-bold text-amber-500 mb-0.5">ℹ️ GitHub Pages Static Hosting Notice</p>
+                  GitHub Pages hosts static assets and cannot execute your Node.js backend. To connect WaveTune, deploy your backend repository to Render (or any cloud host) and enter your custom server URL below!
+                </div>
+              )}
+
               {/* Current Status Indicator Row */}
               <div className="flex items-center justify-between p-3 rounded-2xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/5">
                 <span className="text-xs font-sans text-neutral-600 dark:text-neutral-400 font-medium">Pipeline Status</span>
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${isSocketConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
                   <span className={`text-xs font-mono font-bold ${isSocketConnected ? 'text-emerald-400' : 'text-amber-400'}`}>
-                    {isSocketConnected ? 'ONLINE' : 'DISCONNECTED'}
+                    {isSocketConnected ? 'ONLINE' : 'OFFLINE'}
                   </span>
                 </div>
               </div>
