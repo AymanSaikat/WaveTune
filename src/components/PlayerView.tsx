@@ -33,7 +33,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   const [localProgress, setLocalProgress] = useState(0);
   const [muted, setMuted] = useState(false);
   const [deviceName, setDeviceName] = useState('');
-  const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
+  const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string>('');
   
   // Dual-track Routing Mode selector to choose between YouTube video frame or device setSinkId audio player
   const [audioPlaybackMode, setAudioPlaybackMode] = useState<'routed' | 'youtube'>(() => {
@@ -61,12 +61,79 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
         .catch((err: any) => console.warn('Stored speaker output sync failed:', err));
     }
 
+    // Auto-unlock audio playback silently upon first user interactions
+    const handleGesture = () => {
+      if (audio && playbackState.status === 'playing' && audio.paused) {
+        audio.play().catch(() => {});
+      }
+    };
+    window.addEventListener('click', handleGesture);
+    window.addEventListener('touchstart', handleGesture);
+
     return () => {
+      window.removeEventListener('click', handleGesture);
+      window.removeEventListener('touchstart', handleGesture);
       audio.pause();
       audio.src = '';
       audioRef.current = null;
     };
   }, []);
+
+  // Dynamically resolve high-quality streamable YouTube audio for selected output speaker routing
+  useEffect(() => {
+    if (!currentTrack) {
+      setResolvedAudioUrl('');
+      return;
+    }
+
+    // Pre-populate with Apple preview or SoundHelix draft stream so it starts immediately
+    const draftSrc = currentTrack.previewUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+    setResolvedAudioUrl(draftSrc);
+
+    let isCurrent = true;
+
+    const resolveStream = async () => {
+      const providers = [
+        `https://pipedapi.kavin.rocks/streams/${currentTrack.youtubeId}`,
+        `https://api.piped.yt/streams/${currentTrack.youtubeId}`,
+        `https://piped-api.lunar.icu/streams/${currentTrack.youtubeId}`,
+        `https://pipedapi.tokhmi.xyz/streams/${currentTrack.youtubeId}`
+      ];
+
+      for (const url of providers) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s fast timeout
+
+          const res = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeoutId);
+
+          if (res.ok && isCurrent) {
+            const data = await res.json();
+            if (data.audioStreams && data.audioStreams.length > 0) {
+              const sorted = data.audioStreams.sort((a: any, b: any) => b.bitrate - a.bitrate);
+              const best = sorted[0];
+              if (best && best.url && isCurrent) {
+                console.log(`[YouTube Audio Player] Successfully resolved pure audio stream link:`, best.url);
+                setResolvedAudioUrl(best.url);
+                return;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`Piped audio search mirror failed to load: ${url}`, err);
+        }
+      }
+    };
+
+    if (!currentTrack.previewUrl) {
+      resolveStream();
+    }
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentTrack]);
 
   // Synchronize master output properties (vol, mute)
   useEffect(() => {
@@ -85,27 +152,35 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (playbackState.status === 'playing' && currentTrack && audioPlaybackMode === 'routed') {
-      // Use premium Apple direct CDN stream first. Fallback to soundhelix so music is never silent!
-      const activeSrc = currentTrack.previewUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
-      
-      if (audio.src !== activeSrc) {
-        audio.src = activeSrc;
+    if (playbackState.status === 'playing' && resolvedAudioUrl && audioPlaybackMode === 'routed') {
+      if (audio.src !== resolvedAudioUrl) {
+        audio.src = resolvedAudioUrl;
         audio.load();
+        audio.currentTime = localProgress;
       }
 
       audio.play()
         .then(() => {
-          setAudioAutoplayBlocked(false);
+          console.log('[Speaker Play] Audio started playing successfully');
         })
         .catch((err) => {
-          console.warn('Browser policy temporarily blocked direct audio auto-play, waiting for focus:', err);
-          setAudioAutoplayBlocked(true);
+          console.warn('Browser policy blocked direct audio play, waiting for user gesture/click:', err);
         });
     } else {
       audio.pause();
     }
-  }, [playbackState.status, currentTrack, audioPlaybackMode]);
+  }, [playbackState.status, resolvedAudioUrl, audioPlaybackMode]);
+
+  // Keep audio.currentTime aligned with localProgress state to handle skips/seeks
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || audioPlaybackMode !== 'routed' || playbackState.status !== 'playing') return;
+
+    if (Math.abs(audio.currentTime - localProgress) > 3) {
+      console.log(`[Audio Seek] Drift detected (${Math.round(audio.currentTime)}s vs ${localProgress}s), syncing...`);
+      audio.currentTime = localProgress;
+    }
+  }, [localProgress, audioPlaybackMode, playbackState.status]);
 
   // Determine a glowing backdrop color based on active track metadata to fulfill visual requirements
   const getGlowStyles = () => {
@@ -259,39 +334,6 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
         className="absolute inset-0 pointer-events-none transition-all duration-1000 border border-neutral-200 dark:border-white/5 rounded-3xl z-0 filter blur-[80px]"
         style={getGlowStyles()}
       />
-
-      {/* Autoplay Unlock Overlay Gesture Trigger */}
-      {audioAutoplayBlocked && (
-        <div className="absolute inset-0 bg-neutral-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-center rounded-3xl">
-          <div className="max-w-sm space-y-4">
-            <div className="w-16 h-16 bg-pink-500/10 border border-pink-500/30 rounded-full flex items-center justify-center mx-auto text-pink-400 animate-bounce">
-              <Volume2 className="w-8 h-8" />
-            </div>
-            <h3 className="text-xl font-bold font-sans text-white">Unlock Live Audio</h3>
-            <p className="text-xs text-neutral-400 font-mono leading-relaxed">
-              Browser-level security policies require a direct click gesture to authorize audio playback and custom hardware speaker routing.
-            </p>
-            <button
-              type="button"
-              onClick={async () => {
-                const audio = audioRef.current;
-                if (audio) {
-                  try {
-                    await audio.play();
-                    setAudioAutoplayBlocked(false);
-                    onAlert('Sound playback successfully authorized & unlocked!', 'success');
-                  } catch (e) {
-                    console.error('Failed to manually trigger play:', e);
-                  }
-                }
-              }}
-              className="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-95 text-white font-bold rounded-2xl text-xs font-sans transition-all cursor-pointer shadow-lg active:scale-95"
-            >
-              Start Streaming Sound
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Grid container */}
       <div className="relative z-10 w-full flex-1 flex flex-col justify-between space-y-8">
