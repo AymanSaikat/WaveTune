@@ -37,7 +37,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   
   // Dual-track Routing Mode selector to choose between YouTube video frame or device setSinkId audio player
   const [audioPlaybackMode, setAudioPlaybackMode] = useState<'routed' | 'youtube'>(() => {
-    return (localStorage.getItem('wavetune_audio_playback_mode') as 'routed' | 'youtube') || 'routed';
+    return (localStorage.getItem('wavetune_audio_playback_mode') as 'routed' | 'youtube') || 'youtube';
   });
 
   // Device UUID configuration
@@ -86,13 +86,30 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
       return;
     }
 
-    // Pre-populate with Apple preview or SoundHelix draft stream so it starts immediately
-    const draftSrc = currentTrack.previewUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
-    setResolvedAudioUrl(draftSrc);
+    // Do NOT pre-populate with SoundHelix or Apple previews to avoid playing a "demo sound"
+    // Instead, start fresh and fetch the real, full high-quality audio stream
+    setResolvedAudioUrl('');
 
     let isCurrent = true;
 
     const resolveStream = async () => {
+      // 1. Try our high-reliability server-level proxy endpoint first (CORS-free, registry-grounded)
+      try {
+        console.log(`[YouTube Audio Player] Attempting server-side stream resolution for ID: ${currentTrack.youtubeId}`);
+        const res = await fetch(`/api/resolve-stream/${currentTrack.youtubeId}`);
+        if (res.ok && isCurrent) {
+          const data = await res.json();
+          if (data && data.streamUrl) {
+            console.log(`[YouTube Audio Player] Successfully resolved high-reliability server stream link!`);
+            setResolvedAudioUrl(data.streamUrl);
+            return;
+          }
+        }
+      } catch (serverErr) {
+        console.warn('[YouTube Audio Player] Server-side resolution failed, entering client fallback:', serverErr);
+      }
+
+      // 2. Client-side fallback pool
       const providers = [
         `https://pipedapi.kavin.rocks/streams/${currentTrack.youtubeId}`,
         `https://api.piped.yt/streams/${currentTrack.youtubeId}`,
@@ -101,6 +118,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
       ];
 
       for (const url of providers) {
+        if (!isCurrent) return;
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s fast timeout
@@ -114,7 +132,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
               const sorted = data.audioStreams.sort((a: any, b: any) => b.bitrate - a.bitrate);
               const best = sorted[0];
               if (best && best.url && isCurrent) {
-                console.log(`[YouTube Audio Player] Successfully resolved pure audio stream link:`, best.url);
+                console.log(`[YouTube Audio Player] Client fallback successfully resolved stream link:`, best.url);
                 setResolvedAudioUrl(best.url);
                 return;
               }
@@ -124,16 +142,24 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
           console.warn(`Piped audio search mirror failed to load: ${url}`, err);
         }
       }
+
+      // 3. Fallback: If both server-side and client-side direct streams failed, auto-switch to Default Speaker Mode (YouTube native)
+      // This prevents the player from remaining silent or requiring manual intervention
+      if (isCurrent && audioPlaybackMode === 'routed') {
+        console.warn('[YouTube Audio Player] Direct audio stream resolution failed. Auto-routing to Default Speaker (YouTube native) mode to play the original track.');
+        onAlert('Direct audio stream unavailable. Falling back to Default Speaker Mode to play original track.', 'success');
+        setAudioPlaybackMode('youtube');
+        localStorage.setItem('wavetune_audio_playback_mode', 'youtube');
+      }
     };
 
-    if (!currentTrack.previewUrl) {
-      resolveStream();
-    }
+    // ALWAYS query full audio stream resolution regardless of 30s preview presence to play the proper full selected track
+    resolveStream();
 
     return () => {
       isCurrent = false;
     };
-  }, [currentTrack]);
+  }, [currentTrack, audioPlaybackMode]);
 
   // Synchronize master output properties (vol, mute)
   useEffect(() => {
@@ -153,19 +179,47 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
     if (!audio) return;
 
     if (playbackState.status === 'playing' && resolvedAudioUrl && audioPlaybackMode === 'routed') {
+      const storedDeviceId = localStorage.getItem('wavetune_output_device_id') || 'default';
+      
+      const startPlayback = () => {
+        audio.play()
+          .then(() => {
+            console.log('[Speaker Play] Audio started playing successfully');
+          })
+          .catch((err) => {
+            console.warn('Browser policy blocked direct audio play, waiting for user gesture/click:', err);
+          });
+      };
+
       if (audio.src !== resolvedAudioUrl) {
         audio.src = resolvedAudioUrl;
         audio.load();
         audio.currentTime = localProgress;
+        
+        // Re-apply sinkId immediately after setting src/loading because load() resets it
+        if (storedDeviceId !== 'default' && 'setSinkId' in audio) {
+          (audio as any).setSinkId(storedDeviceId)
+            .then(() => {
+              console.log(`[Playback Stream] Audio sink successfully bound to device: ${storedDeviceId}`);
+              startPlayback();
+            })
+            .catch((err: any) => {
+              console.warn('[Playback Stream] setSinkId failed upon src change, trying direct start:', err);
+              startPlayback();
+            });
+        } else {
+          startPlayback();
+        }
+      } else {
+        // Source is same, but let's double-check sinkId compliance and play
+        if (storedDeviceId !== 'default' && 'setSinkId' in audio) {
+          (audio as any).setSinkId(storedDeviceId)
+            .then(() => startPlayback())
+            .catch(() => startPlayback());
+        } else {
+          startPlayback();
+        }
       }
-
-      audio.play()
-        .then(() => {
-          console.log('[Speaker Play] Audio started playing successfully');
-        })
-        .catch((err) => {
-          console.warn('Browser policy blocked direct audio play, waiting for user gesture/click:', err);
-        });
     } else {
       audio.pause();
     }
@@ -411,63 +465,64 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
                 </p>
               </div>
 
-              {/* Live Media Playback Module (Safely configured via YouTube Iframe Embed API) */}
-              <GlassCard theme={theme} className="p-4 border-neutral-200 dark:border-white/5 bg-black/5 dark:bg-black/25">
-                <div className="flex items-center justify-between mb-3 text-xs font-mono text-neutral-500 dark:text-neutral-400">
-                  <span className="flex items-center gap-1">
-                    <Video className="w-4 h-4 text-pink-400 animate-pulse" /> Live Sound Container (Active IFrame)
-                  </span>
-                  <span className="bg-neutral-200/50 dark:bg-white/5 px-2 py-0.5 rounded text-[10px] text-neutral-600 dark:text-neutral-400">YouTube Native</span>
+              {/* Hidden background YouTube Player to process native playback of selected music without showing video */}
+              {currentTrack.youtubeId && (
+                <div 
+                  style={{ 
+                    position: 'absolute', 
+                    width: '1px', 
+                    height: '1px', 
+                    padding: '0', 
+                    margin: '-1px',
+                    overflow: 'hidden', 
+                    clip: 'rect(0, 0, 0, 0)', 
+                    whiteSpace: 'nowrap', 
+                    border: '0',
+                    opacity: 0,
+                    pointerEvents: 'none'
+                  }}
+                >
+                  <iframe
+                    id="musesync-yt-player"
+                    src={getEmbedUrl()}
+                    className="w-full h-full"
+                    allow="autoplay; encrypted-media; picture-in-picture"
+                    title="Hidden Track Player"
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
+              )}
 
-                <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black border border-neutral-200 dark:border-white/5">
-                  {currentTrack.youtubeId ? (
-                    <iframe
-                      id="musesync-yt-player"
-                      src={getEmbedUrl()}
-                      className="w-full h-full"
-                      allow="autoplay; encrypted-media; picture-in-picture"
-                      title="Paired Stream Player content"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center text-xs text-neutral-500">
-                      Empty Media Stream
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-2 text-[10px] text-neutral-500 font-sans leading-relaxed text-center">
-                  * Note: If browser policy blocks auto-playback, click the YouTube play button inside the frame above to start the movie.
-                </div>
-
-                <div className="flex justify-end gap-3 mt-3">
-                  <button
-                    onClick={() => setMuted(!muted)}
-                    className="p-2 bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-white/5 hover:border-neutral-300 dark:hover:border-white/10 rounded-lg text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-all cursor-pointer flex items-center gap-1.5 text-xs font-mono"
-                  >
-                    {muted ? (
-                      <>
-                        <VolumeX className="w-4 h-4 text-pink-500" /> Unmute Player
-                      </>
-                    ) : (
-                      <>
-                        <Volume2 className="w-4 h-4 text-pink-400" /> Mute Player
-                      </>
-                    )}
-                  </button>
-                </div>
-              </GlassCard>
-
-              {/* Playback Routing Protocol Tab Selector */}
-              <div className={`p-3 rounded-xl border text-left ${
+              {/* Playback Routing Protocol Tab Selector & Quick Mute Actions */}
+              <div className={`p-4 rounded-xl border text-left space-y-4 ${
                 theme === 'light'
                   ? 'bg-neutral-50/50 border-neutral-200'
                   : 'bg-zinc-900/40 border-white/5'
               }`}>
-                <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-pink-500 block mb-2">
-                  🔌 Dual Audio Playback Mode
-                </label>
+                <div className="flex items-center justify-between gap-3">
+                  <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-pink-500">
+                    🔌 Dual Audio Playback Mode
+                  </label>
+                  <button
+                    onClick={() => setMuted(!muted)}
+                    className={`py-1 px-2.5 rounded-lg border text-[10px] font-mono flex items-center gap-1.5 transition-all cursor-pointer ${
+                      muted 
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-500 hover:bg-rose-500/25'
+                        : 'bg-neutral-200/50 hover:bg-neutral-200 border-neutral-350 dark:bg-zinc-800 dark:border-white/10 dark:hover:bg-zinc-700 text-neutral-600 dark:text-neutral-400'
+                    }`}
+                  >
+                    {muted ? (
+                      <>
+                        <VolumeX className="w-3.5 h-3.5 text-rose-500" /> Unmute Player
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="w-3.5 h-3.5 text-pink-400" /> Mute Player
+                      </>
+                    )}
+                  </button>
+                </div>
+
                 <div className="grid grid-cols-2 gap-1.5 p-0.5 rounded-lg bg-neutral-200 dark:bg-black/50">
                   <button
                     type="button"
@@ -500,7 +555,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
                     📺 Default Speaker Mode
                   </button>
                 </div>
-                <p className="text-[9px] font-mono mt-1 px-1 opacity-70 text-neutral-500 dark:text-neutral-405 leading-normal">
+                <p className="text-[9px] font-mono px-1 opacity-70 text-neutral-500 dark:text-neutral-400 leading-normal">
                   {audioPlaybackMode === 'routed' 
                     ? '* Plays independent audio stream on your picked custom output hardware (dropdown below).'
                     : '* Plays full video/audio on the default output speaker only (setSinkId blocked by browser).'

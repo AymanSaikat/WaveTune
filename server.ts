@@ -497,6 +497,122 @@ app.get("/api/queue", (req, res) => {
   res.json({ queue, playbackState });
 });
 
+app.get("/api/resolve-stream/:youtubeId", async (req, res) => {
+  const { youtubeId } = req.params;
+  if (!youtubeId || youtubeId === 'undefined') {
+    return res.status(400).json({ error: "Missing YouTube ID" });
+  }
+
+  // Tier 1: Try public Cobalt instances first for high reliability and direct audio extraction
+  const cobaltInstances = [
+    "https://api.cobalt.tools",
+    "https://cobalt.api.unblock.ch",
+    "https://cobalt-api.lunes.tech",
+    "https://api.kobalt.su"
+  ];
+
+  for (const cobaltBase of cobaltInstances) {
+    try {
+      console.log(`[Server Stream Resolver] Trying Cobalt resolver at ${cobaltBase} for YouTube ID: ${youtubeId}`);
+      const response = await fetch(`${cobaltBase}/api/json`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0"
+        },
+        body: JSON.stringify({
+          url: `https://www.youtube.com/watch?v=${youtubeId}`,
+          videoQuality: "720",
+          downloadMode: "audio",
+          audioFormat: "mp3",
+          audioBitrate: "128",
+          isAudioOnly: true
+        }),
+        signal: AbortSignal.timeout(3500) // 3.5 seconds fast timeout per instance
+      });
+
+      if (response.ok) {
+        const data = await response.json() as any;
+        if (data && data.url) {
+          console.log(`[Server Stream Resolver] Stream resolved successfully via Cobalt instance: ${cobaltBase}`);
+          return res.json({ streamUrl: data.url });
+        }
+      } else {
+        const errorText = await response.text();
+        console.warn(`[Server Stream Resolver] Cobalt instance ${cobaltBase} returned non-ok status: ${response.status}`, errorText.slice(0, 100));
+      }
+    } catch (err: any) {
+      console.log(`[Server Stream Resolver] Cobalt instance failed (${cobaltBase}):`, err.message || err);
+    }
+  }
+
+  // Tier 2: Fall back to Piped instances
+  const providers = [
+    "https://pipedapi.kavin.rocks",
+    "https://api.piped.yt",
+    "https://pipedapi.lunar.icu",
+    "https://pipedapi.tokhmi.xyz",
+    "https://pipedapi.sugarpill.me",
+    "https://pipedapi.reallyawesomedomain.xyz",
+    "https://pipedapi.us.to",
+    "https://pipedapi.colbyland.xyz",
+    "https://pipedapi.drgns.space"
+  ];
+
+  let liveInstances: string[] = [];
+  try {
+    const registryRes = await fetch("https://piped-instances.kavin.rocks/", { 
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      signal: AbortSignal.timeout(3000) // Fast 3-second timeout
+    });
+    if (registryRes.ok) {
+      const list = await registryRes.json();
+      if (Array.isArray(list)) {
+        liveInstances = list
+          .filter((inst: any) => inst.api_url && inst.api_health && inst.api_health > 0.6)
+          .sort((a: any, b: any) => (b.api_health || 0) - (a.api_health || 0))
+          .map((inst: any) => inst.api_url.replace(/\/+$/, ""));
+      }
+    }
+  } catch (err) {
+    console.warn("[Server Stream Resolver] Failed to contact Piped registry, using hardcoded pool:", err);
+  }
+
+  const allProviders = [...new Set([...liveInstances, ...providers])];
+
+  for (const apiBase of allProviders) {
+    try {
+      console.log(`[Server Stream Resolver] Resolving ${youtubeId} on Piped instance: ${apiBase}`);
+      const fetchUrl = `${apiBase}/streams/${youtubeId}`;
+      const response = await fetch(fetchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'Accept': 'application/json'
+        },
+        signal: AbortSignal.timeout(2500) // 2.5s fast timeout per Piped mirror
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.audioStreams && data.audioStreams.length > 0) {
+          // Sort by bitrate descending to get best audio quality
+          const sorted = data.audioStreams.sort((a: any, b: any) => b.bitrate - a.bitrate);
+          const best = sorted[0];
+          if (best && best.url) {
+            console.log(`[Server Stream Resolver] Stream resolved successfully from Piped ${apiBase}`);
+            return res.json({ streamUrl: best.url });
+          }
+        }
+      }
+    } catch (err: any) {
+      console.log(`[Server Stream Resolver] Piped instance failed (${apiBase}):`, err.message || err);
+    }
+  }
+
+  res.status(502).json({ error: "Failed to resolve stream link from any active mirror" });
+});
+
 app.get("/api/admin/history", (req, res) => {
   const playedTracks = queue.filter(t => t.status === 'played');
   playedTracks.sort((a, b) => {
