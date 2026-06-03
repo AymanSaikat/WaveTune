@@ -34,6 +34,11 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   const [muted, setMuted] = useState(false);
   const [deviceName, setDeviceName] = useState('');
   const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
+  
+  // Dual-track Routing Mode selector to choose between YouTube video frame or device setSinkId audio player
+  const [audioPlaybackMode, setAudioPlaybackMode] = useState<'routed' | 'youtube'>(() => {
+    return (localStorage.getItem('wavetune_audio_playback_mode') as 'routed' | 'youtube') || 'routed';
+  });
 
   // Device UUID configuration
   const deviceIdRef = useRef<string>('');
@@ -44,7 +49,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   useEffect(() => {
     // Instantiate stable client audio component
     const audio = new Audio();
-    audio.crossOrigin = 'anonymous';
+    // Do NOT set crossOrigin = 'anonymous' to prevent CORS block on standard media stream links
     audio.volume = playbackState.volume / 100;
     audioRef.current = audio;
 
@@ -67,15 +72,20 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.volume = muted ? 0 : playbackState.volume / 100;
-  }, [playbackState.volume, muted]);
+
+    if (audioPlaybackMode === 'routed') {
+      audio.volume = muted ? 0 : playbackState.volume / 100;
+    } else {
+      audio.volume = 0; // Completely muted when playing through the YouTube iframe to prevent overlapping echo!
+    }
+  }, [playbackState.volume, muted, audioPlaybackMode]);
 
   // Synchronize playing stream source & state
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (playbackState.status === 'playing' && currentTrack) {
+    if (playbackState.status === 'playing' && currentTrack && audioPlaybackMode === 'routed') {
       // Use premium Apple direct CDN stream first. Fallback to soundhelix so music is never silent!
       const activeSrc = currentTrack.previewUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
       
@@ -95,7 +105,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
     } else {
       audio.pause();
     }
-  }, [playbackState.status, currentTrack]);
+  }, [playbackState.status, currentTrack, audioPlaybackMode]);
 
   // Determine a glowing backdrop color based on active track metadata to fulfill visual requirements
   const getGlowStyles = () => {
@@ -236,7 +246,8 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   const getEmbedUrl = () => {
     if (!currentTrack) return '';
     const autoplay = playbackState.status === 'playing' ? '1' : '0';
-    const mute = muted ? '1' : '0';
+    // Mute YouTube completely if we are routing audio to custom hardware output speakers, to prevent dual sound!
+    const mute = audioPlaybackMode === 'routed' ? '1' : (muted ? '1' : '0');
     // Load embedded player, enable API tracking and mute overrides if selected
     return `https://www.youtube.com/embed/${currentTrack.youtubeId}?autoplay=${autoplay}&mute=${mute}&controls=1&enablejsapi=1&origin=${window.location.origin}`;
   };
@@ -405,6 +416,55 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
                   </button>
                 </div>
               </GlassCard>
+
+              {/* Playback Routing Protocol Tab Selector */}
+              <div className={`p-3 rounded-xl border text-left ${
+                theme === 'light'
+                  ? 'bg-neutral-50/50 border-neutral-200'
+                  : 'bg-zinc-900/40 border-white/5'
+              }`}>
+                <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-pink-500 block mb-2">
+                  🔌 Dual Audio Playback Mode
+                </label>
+                <div className="grid grid-cols-2 gap-1.5 p-0.5 rounded-lg bg-neutral-200 dark:bg-black/50">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAudioPlaybackMode('routed');
+                      localStorage.setItem('wavetune_audio_playback_mode', 'routed');
+                      onAlert('Custom audio speaker routing selected.', 'success');
+                    }}
+                    className={`py-1.5 text-[10px] font-mono tracking-tight font-bold rounded-md transition-all cursor-pointer ${
+                      audioPlaybackMode === 'routed'
+                        ? 'bg-neutral-900 text-white dark:bg-neutral-800 dark:text-white shadow-sm'
+                        : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white'
+                    }`}
+                  >
+                    🔊 Speaker Routing Mode
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAudioPlaybackMode('youtube');
+                      localStorage.setItem('wavetune_audio_playback_mode', 'youtube');
+                      onAlert('Full YouTube Video audio output selected.', 'success');
+                    }}
+                    className={`py-1.5 text-[10px] font-mono tracking-tight font-bold rounded-md transition-all cursor-pointer ${
+                      audioPlaybackMode === 'youtube'
+                        ? 'bg-neutral-900 text-white dark:bg-neutral-800 dark:text-white shadow-sm'
+                        : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-white'
+                    }`}
+                  >
+                    📺 Default Speaker Mode
+                  </button>
+                </div>
+                <p className="text-[9px] font-mono mt-1 px-1 opacity-70 text-neutral-500 dark:text-neutral-405 leading-normal">
+                  {audioPlaybackMode === 'routed' 
+                    ? '* Plays independent audio stream on your picked custom output hardware (dropdown below).'
+                    : '* Plays full video/audio on the default output speaker only (setSinkId blocked by browser).'
+                  }
+                </p>
+              </div>
 
               {/* Direct Web Audio Output Device Routing Engine */}
               <DeviceSelector audioElementRef={audioRef} theme={theme} onAlert={onAlert} />

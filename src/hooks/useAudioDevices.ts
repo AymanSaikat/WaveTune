@@ -86,6 +86,30 @@ export function useAudioDevices() {
     }
   }, []);
 
+  const selectNativeOutputDevice = useCallback(async (audioElement?: HTMLAudioElement | null) => {
+    try {
+      if (navigator.mediaDevices && 'selectAudioOutput' in navigator.mediaDevices) {
+        const device = await (navigator.mediaDevices as any).selectAudioOutput();
+        if (device && device.deviceId) {
+          setSelectedDeviceId(device.deviceId);
+          localStorage.setItem('wavetune_output_device_id', device.deviceId);
+          setPermissionGranted(true);
+
+          if (audioElement && 'setSinkId' in audioElement) {
+            await (audioElement as any).setSinkId(device.deviceId);
+          }
+          await refreshDevices();
+          return device.label || 'Selected Output Speaker';
+        }
+      } else {
+        throw new Error('Native selectAudioOutput is not supported on this browser context.');
+      }
+    } catch (err: any) {
+      console.error('Failed native selectAudioOutput picker selection:', err);
+      throw err;
+    }
+  }, [refreshDevices]);
+
   return {
     devices,
     selectedDeviceId,
@@ -94,5 +118,6 @@ export function useAudioDevices() {
     refreshDevices,
     requestPermissionAndRefresh,
     selectDevice,
+    selectNativeOutputDevice,
   };
 }

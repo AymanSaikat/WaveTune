@@ -17,6 +17,7 @@ export default function DeviceSelector({ audioElementRef, theme, onAlert }: Devi
     refreshDevices,
     requestPermissionAndRefresh,
     selectDevice,
+    selectNativeOutputDevice,
   } = useAudioDevices();
 
   const handleDeviceChange = async (deviceId: string) => {
@@ -28,6 +29,16 @@ export default function DeviceSelector({ audioElementRef, theme, onAlert }: Devi
       onAlert?.(`Successfully shifted sound output to: ${label}`, 'success');
     } catch (err: any) {
       onAlert?.(`Failed to select speaker: ${err?.message || err}`, 'error');
+    }
+  };
+
+  const handleNativeDevicePick = async () => {
+    const audioEl = audioElementRef?.current;
+    try {
+      const selectedLabel = await selectNativeOutputDevice(audioEl);
+      onAlert?.(`Successfully shifted sound output to: ${selectedLabel}`, 'success');
+    } catch (err: any) {
+      onAlert?.(`Speaker selection cancelled or not supported: ${err?.message || err}`, 'error');
     }
   };
 
@@ -118,6 +129,15 @@ export default function DeviceSelector({ audioElementRef, theme, onAlert }: Devi
             )}
           </select>
         </div>
+
+        {/* Modern Web Audio selectAudioOutput Native Selector Entry point */}
+        <button
+          type="button"
+          onClick={handleNativeDevicePick}
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 mt-2 bg-gradient-to-r from-pink-500/10 to-purple-600/10 border border-pink-500/20 text-pink-500 dark:text-pink-400 font-bold rounded-lg text-[10px] font-mono hover:bg-pink-500/20 transition-all cursor-pointer tracking-wider uppercase text-center"
+        >
+          🎯 Native Speaker Dialogue Prompt
+        </button>
 
         {/* Informative advice for user regarding device labels & permissions */}
         {!permissionGranted && (
