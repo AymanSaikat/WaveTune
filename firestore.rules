@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // /queue Collection rules
+    match /queue/{trackId} {
+      allow read, list, get: if true;
+      
+      allow create: if isValidId(trackId) &&
+        request.resource.data.id == trackId &&
+        request.resource.data.title is string && request.resource.data.title.size() <= 200 &&
+        request.resource.data.artist is string && request.resource.data.artist.size() <= 100 &&
+        request.resource.data.youtubeId is string && request.resource.data.youtubeId.size() <= 30 &&
+        request.resource.data.status in ['queued', 'playing', 'paused', 'played'] &&
+        request.resource.data.votes is int && request.resource.data.votes >= 1;
+
+      allow update: if isValidId(trackId) &&
+        // Action 1: Vote incrementing
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes']) && request.resource.data.votes is int) ||
+        // Action 2: Player status change, locking or state adjustments by managers/displays
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'playedAt'])) ||
+        // Action 3: Broad re-ordering or host full updating
+        (request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'votes', 'title', 'artist']));
+
+      allow delete: if true; // allow guests or admins to remove tracks
+    }
+
+    // /playbackState Collection rules
+    match /playbackState/{docId} {
+      allow read, get, write: if docId == 'current' || docId == 'adminConfig';
+    }
+
+    // /devices Collection rules
+    match /devices/{deviceId} {
+      allow read, get, list: if true;
+      allow write: if isValidId(deviceId);
+    }
+  }
+}

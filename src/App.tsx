@@ -1,7 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
 import { Track, PlaybackState, PairedDevice } from './types';
-import { getBackendUrl, apiFetch } from './utils';
 import PublicView from './components/PublicView';
 import AdminView from './components/AdminView';
 import PlayerView from './components/PlayerView';
@@ -9,6 +7,23 @@ import Settings from './components/Settings';
 import AccountView from './components/AccountView';
 import DashboardView from './components/DashboardView';
 import WaveTuneLogo from './components/WaveTuneLogo';
+import {
+  initializeFirebaseSchema,
+  subscribeToQueue,
+  subscribeToPlaybackState,
+  subscribeToDevices,
+  addQueueTrack,
+  voteQueueTrack,
+  deleteQueueTrack,
+  clearAllQueue,
+  reorderQueueTracks,
+  triggerPlaybackControl,
+  registerDeviceForPairing,
+  verifyAndPairCode,
+  reportPlaybackProgress,
+  resolveCompletedTrack,
+  validateAdminAccess
+} from './lib/firebaseService';
 import {
   Music,
   Settings as SettingsIcon,
@@ -32,7 +47,7 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [socket, setSocket] = useState<any>(null);
   const [queue, setQueue] = useState<Track[]>([]);
   const [playbackState, setPlaybackState] = useState<PlaybackState>({
     currentTrackId: null,
@@ -54,9 +69,6 @@ export default function App() {
   const [roomDesc, setRoomDesc] = useState('WaveTune Live Audio System - Broadcast Terminal');
   const [activeStreamLimit, setActiveStreamLimit] = useState('unlimited');
 
-  // Backend connection url for GitHub Pages compatibility
-  const [backendUrl, setBackendUrlState] = useState(() => getBackendUrl());
-
   // Broadcasting Hub Link states
   const [broadcastingHubLink, setBroadcastingHubLink] = useState(() => localStorage.getItem('sonicstream_broadcasting_hub_link') || 'https://github.com/AymanSaikat');
   const [broadcastingHubLinkInput, setBroadcastingHubLinkInput] = useState(() => localStorage.getItem('sonicstream_broadcasting_hub_link') || 'https://github.com/AymanSaikat');
@@ -74,11 +86,6 @@ export default function App() {
   // Passcode login states
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-
-  // Server connection diagnostics & override states
-  const [isSocketConnected, setIsSocketConnected] = useState(false);
-  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
-  const [modalTempUrl, setModalTempUrl] = useState(backendUrl);
 
   // Flash Alert System
   const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -109,47 +116,126 @@ export default function App() {
     }
   }, [theme]);
 
+  const queueRef = useRef<Track[]>([]);
+  const playbackStateRef = useRef<PlaybackState>({
+    currentTrackId: null,
+    status: 'stopped',
+    progress: 0,
+    volume: 75,
+    activeDeviceId: null,
+  });
+  const devicesRef = useRef<PairedDevice[]>([]);
+
   useEffect(() => {
-    // Connect to WebSocket pointing dynamically to the configured backendURL
-    const socketInstance = io(backendUrl, {
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      withCredentials: true,
-    });
+    queueRef.current = queue;
+  }, [queue]);
 
-    socketInstance.on('connect', () => {
-      console.log('Real-time connection pipeline established with socket ID:', socketInstance.id);
-      setIsSocketConnected(true);
-    });
+  useEffect(() => {
+    playbackStateRef.current = playbackState;
+  }, [playbackState]);
 
-    socketInstance.on('queue_update', (updatedQueue: Track[]) => {
+  useEffect(() => {
+    devicesRef.current = devices;
+  }, [devices]);
+
+  const virtualSocketRef = useRef<any>(null);
+  if (!virtualSocketRef.current) {
+    const listeners: Record<string, Function[]> = {};
+    virtualSocketRef.current = {
+      id: 'firebase-virtual-socket',
+      on: (event: string, cb: Function) => {
+        if (!listeners[event]) listeners[event] = [];
+        listeners[event].push(cb);
+      },
+      off: (event: string) => {
+        delete listeners[event];
+      },
+      emit: async (event: string, ...args: any[]) => {
+        console.log(`[VirtualSocket] EMIT [${event}]`, args);
+        if (event === 'add_request') {
+          await addQueueTrack(args[0]);
+        } else if (event === 'vote_request') {
+          const { id, increment } = args[0];
+          await voteQueueTrack(id, increment);
+        } else if (event === 'delete_track') {
+          await deleteQueueTrack(args[0], playbackStateRef.current);
+        } else if (event === 'clear_queue') {
+          await clearAllQueue();
+        } else if (event === 'reorder_queue') {
+          await reorderQueueTracks(args[0], queueRef.current);
+        } else if (event === 'playback_control') {
+          await triggerPlaybackControl(args[0], queueRef.current, playbackStateRef.current);
+          const activeId = playbackStateRef.current.activeDeviceId;
+          if (activeId) {
+            const nextTrack = queueRef.current.find(t => t.id === args[0].targetTrackId || t.id === playbackStateRef.current.currentTrackId);
+            virtualSocketRef.current.trigger('device_playback_command', {
+              action: args[0].action,
+              track: nextTrack || null,
+              volume: playbackStateRef.current.volume,
+              status: playbackStateRef.current.status
+            });
+          }
+        } else if (event === 'request_pairing_code') {
+          const { deviceId, deviceName } = args[0];
+          const code = await registerDeviceForPairing(deviceId, deviceName);
+          virtualSocketRef.current.trigger('pairing_code_assigned', code);
+        } else if (event === 'pair_device') {
+          const { code, adminName } = args[0];
+          const res: any = await verifyAndPairCode(code, adminName);
+          if (res && res.success && res.device) {
+            virtualSocketRef.current.trigger('paired_confirmed', { pairedBy: adminName });
+          }
+          if (args[1]) args[1](res);
+        } else if (event === 'player_status_feedback') {
+          const { progress, status } = args[0];
+          await reportPlaybackProgress(progress, status);
+        } else if (event === 'player_track_finished') {
+          const { trackId } = args[0];
+          await resolveCompletedTrack(trackId, queueRef.current);
+        }
+      },
+      trigger: (event: string, ...args: any[]) => {
+        const list = listeners[event] || [];
+        list.forEach(cb => {
+          try { cb(...args); } catch (e) { console.error(e); }
+        });
+      }
+    };
+  }
+
+  useEffect(() => {
+    // 1. Initialize Firestore collections and defaults
+    initializeFirebaseSchema();
+
+    // 2. Setup Real-time Listeners
+    const unsubQueue = subscribeToQueue((updatedQueue) => {
       setQueue(updatedQueue);
     });
 
-    socketInstance.on('playback_state_update', (updatedState: PlaybackState) => {
+    const unsubPlayback = subscribeToPlaybackState((updatedState) => {
       setPlaybackState(updatedState);
+      
+      const targetTrack = queueRef.current.find(t => t.id === updatedState.currentTrackId);
+      virtualSocketRef.current.trigger('device_playback_command', {
+        action: updatedState.status === 'playing' ? 'play' : updatedState.status === 'paused' ? 'pause' : 'stop',
+        track: targetTrack || null,
+        volume: updatedState.volume,
+        status: updatedState.status
+      });
     });
 
-    socketInstance.on('devices_update', (updatedDevices: PairedDevice[]) => {
+    const unsubDevices = subscribeToDevices((updatedDevices) => {
       setDevices(updatedDevices);
     });
 
-    socketInstance.on('disconnect', () => {
-      console.warn('Real-time synchronization socket disconnected.');
-      setIsSocketConnected(false);
-    });
-
-    socketInstance.on('connect_error', () => {
-      setIsSocketConnected(false);
-    });
-
-    setSocket(socketInstance);
+    setSocket(virtualSocketRef.current);
 
     return () => {
-      socketInstance.disconnect();
+      unsubQueue();
+      unsubPlayback();
+      unsubDevices();
     };
-  }, [backendUrl]);
+  }, []);
 
   // Handle Admin Passcode Login
   const handleAdminLogin = async (e: React.FormEvent) => {
@@ -158,27 +244,19 @@ export default function App() {
 
     setIsLoggingIn(true);
     try {
-      const res = await apiFetch('/api/admin/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ password }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        localStorage.setItem('sonicstream_admin_token', data.token);
+      const res = await validateAdminAccess(password);
+      if (res.success) {
+        localStorage.setItem('sonicstream_admin_token', 'sonicstream-admin-authenticated-token');
         localStorage.setItem('sonicstream_broadcasting_hub_link', broadcastingHubLinkInput);
         setBroadcastingHubLink(broadcastingHubLinkInput);
         setIsAuthenticated(true);
-        showAlert('Admin CMS authenticated and unlocked.', 'success');
+        showAlert('Admin CMS authenticated and unlocked with Firebase credentials.', 'success');
         setPassword('');
       } else {
-        showAlert(data.error || 'Invalid administrator passcode.', 'error');
+        showAlert(res.error || 'Invalid administrator passcode.', 'error');
       }
     } catch (err: any) {
-      showAlert(`Failed to reach the authentication server at ${backendUrl}. Error: ${err.message || err}. Please ensure your configured backend is online and accessible.`, 'error');
+      showAlert(`Failed to reach the database. Error: ${err.message || err}. Please ensure your network is connected.`, 'error');
     } finally {
       setIsLoggingIn(false);
     }
@@ -238,24 +316,15 @@ export default function App() {
 
             {/* Actions group */}
             <div className="flex items-center gap-2 md:gap-3 shrink-0">
-              {/* Server Connection Indicator */}
-              <button
-                type="button"
-                onClick={() => {
-                  setModalTempUrl(backendUrl);
-                  setIsServerModalOpen(true);
-                }}
-                className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold rounded-full border transition-all cursor-pointer ${
-                  isSocketConnected
-                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
-                    : 'bg-amber-500/10 border-amber-500/25 text-amber-500 animate-pulse'
-                }`}
-                title="Configure connection settings"
+              {/* Firebase Connection Badge */}
+              <div
+                className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold rounded-full border bg-emerald-500/10 border-emerald-500/25 text-emerald-400 font-sans cursor-default"
+                title="Google Firebase Firestore active database sync active"
               >
-                <div className={`w-1.5 h-1.5 rounded-full ${isSocketConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                <span className="hidden sm:inline">{isSocketConnected ? 'Server Online' : 'Server Offline'}</span>
-                <span className="sm:hidden">{isSocketConnected ? 'Online' : 'Offline'}</span>
-              </button>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="hidden sm:inline">Firebase Engaged</span>
+                <span className="sm:hidden">Engaged</span>
+              </div>
 
               {/* Prominent Theme Toggle */}
               <button
@@ -362,23 +431,14 @@ export default function App() {
 
               {/* Action buttons */}
               <div className="flex items-center justify-center gap-2">
-                {/* Server Connection Indicator */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setModalTempUrl(backendUrl);
-                    setIsServerModalOpen(true);
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
-                    isSocketConnected
-                      ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
-                      : 'bg-amber-500/10 border-amber-500/25 text-amber-500 animate-pulse'
-                  }`}
-                  title="Configure connection settings"
+                {/* Firebase Connection Badge */}
+                <div
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border bg-emerald-500/10 border-emerald-500/25 text-emerald-400 font-sans cursor-default"
+                  title="Google Firebase Firestore active database sync active"
                 >
-                  <div className={`w-1.5 h-1.5 rounded-full ${isSocketConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                  <span>{isSocketConnected ? 'Online' : 'Offline'}</span>
-                </button>
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Firebase Engaged</span>
+                </div>
 
                 <button
                   type="button"
@@ -592,12 +652,6 @@ export default function App() {
                   theme={theme}
                   activeStreamLimit={activeStreamLimit}
                   setActiveStreamLimit={setActiveStreamLimit}
-                  backendUrl={backendUrl}
-                  setBackendUrl={(newUrl) => {
-                    localStorage.setItem('sonicstream_backend_url', newUrl);
-                    setBackendUrlState(newUrl);
-                    showAlert('Backend URL updated! Refresh to restream on this connection.', 'success');
-                  }}
                 />
               )}
 
@@ -713,144 +767,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 5. Server Connection Override & Troubleshooting Modal */}
-      {isServerModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in text-left">
-          <div className="bg-white dark:bg-[#0b0c0e] border border-neutral-200 dark:border-white/10 p-6 max-w-md w-full rounded-3xl shadow-2xl relative z-20">
-            <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2 font-sans">
-              <Server className="w-5 h-5 text-purple-400" /> Server Connection Hub
-            </h3>
-            
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 font-sans leading-relaxed">
-              WaveTune uses a custom Node.js Express server to handle real-time playback syncing, room management, and song resolving.
-            </p>
-
-            <div className="space-y-4 mt-4">
-              {/* GitHub Pages Specific Diagnostic Notice */}
-              {window.location.hostname.endsWith('github.io') && !backendUrl && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-neutral-700 dark:text-amber-400 rounded-2xl text-[11px] font-sans leading-relaxed">
-                  <p className="font-bold text-amber-500 mb-0.5">ℹ️ GitHub Pages Static Hosting Notice</p>
-                  GitHub Pages hosts static assets and cannot execute your Node.js backend. To connect WaveTune, deploy your backend repository to Render (or any cloud host) and enter your custom server URL below!
-                </div>
-              )}
-
-              {/* Current Status Indicator Row */}
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/5">
-                <span className="text-xs font-sans text-neutral-600 dark:text-neutral-400 font-medium">Pipeline Status</span>
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${isSocketConnected ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
-                  <span className={`text-xs font-mono font-bold ${isSocketConnected ? 'text-emerald-400' : 'text-amber-400'}`}>
-                    {isSocketConnected ? 'ONLINE' : 'OFFLINE'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Backend URL Input Row */}
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-neutral-400 dark:text-white/40 uppercase tracking-widest">
-                  Backend Service URL
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={modalTempUrl}
-                    onChange={(e) => setModalTempUrl(e.target.value)}
-                    placeholder="Leave blank for same-domain relative paths (highly recommended)"
-                    className="w-full bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/10 rounded-2xl py-2.5 px-4 text-neutral-900 dark:text-white placeholder-neutral-405 dark:placeholder-white/20 text-xs focus:outline-none focus:border-purple-500 transition-all font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const value = modalTempUrl.trim();
-                      if (!value) {
-                        localStorage.removeItem('sonicstream_backend_url');
-                        setBackendUrlState('');
-                      } else {
-                        localStorage.setItem('sonicstream_backend_url', value);
-                        setBackendUrlState(value);
-                      }
-                      setIsServerModalOpen(false);
-                      showAlert('Backend connection target updated successfully! Re-synchronizing...', 'success');
-                    }}
-                    className="px-4 py-2.5 bg-neutral-900 dark:bg-white text-white dark:text-black rounded-2xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
-                  >
-                    Apply Target
-                  </button>
-                </div>
-              </div>
-
-              {/* Action Buttons to troubleshoot & grant permissions (crucial for iframe cookie limits) */}
-              <div className="space-y-2.5 pt-2">
-                <span className="block text-[11px] font-bold text-neutral-400 dark:text-white/30 uppercase tracking-wider">
-                  Troubleshooting Checklist:
-                </span>
-                
-                {/* Button 1: Grant permissions */}
-                <a
-                  href={`${backendUrl || window.location.origin}/api/queue`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => setIsServerModalOpen(false)}
-                  className="flex items-center justify-between gap-2 p-3 text-xs font-medium text-pink-400 bg-pink-500/5 hover:bg-pink-500/10 border border-pink-500/20 rounded-2xl transition-all"
-                >
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-pink-400 shrink-0" />
-                    <span>1. Grant Browser Cookie Permissions</span>
-                  </div>
-                  <ChevronRight className="w-4 h-4" />
-                </a>
-                <p className="text-[10px] text-neutral-400 dark:text-neutral-500 font-sans leading-relaxed px-1">
-                  * Browsers block cross-site connections in iframes. Open the target back-link, click the <strong className="text-neutral-800 dark:text-white font-semibold">"Grant permission"</strong> button on the white setup screen, and return to this page.
-                </p>
-
-                {/* Preset Fast Select Buttons */}
-                <span className="block text-[11px] font-bold text-neutral-400 dark:text-white/30 uppercase tracking-wider mt-4">
-                  Quick Switch Connection Presets:
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModalTempUrl('');
-                      localStorage.removeItem('sonicstream_backend_url');
-                      setBackendUrlState('');
-                      setIsServerModalOpen(false);
-                      showAlert('Reset connection to relative same-domain pathway!', 'success');
-                    }}
-                    className="py-2.5 px-3 border border-neutral-300 dark:border-white/10 rounded-2xl text-[11px] font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/5 transition-all text-center"
-                  >
-                    Relative Default (Recommended)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const rootUrl = window.location.origin;
-                      setModalTempUrl(rootUrl);
-                      localStorage.setItem('sonicstream_backend_url', rootUrl);
-                      setBackendUrlState(rootUrl);
-                      setIsServerModalOpen(false);
-                      showAlert(`Switched backend specifically to App host origin: ${rootUrl}`, 'success');
-                    }}
-                    className="py-2.5 px-3 border border-neutral-300 dark:border-white/10 rounded-2xl text-[11px] font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/5 transition-all text-center"
-                  >
-                    Specify Host App Origin
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-neutral-200 dark:border-white/10 font-sans">
-              <button
-                type="button"
-                onClick={() => setIsServerModalOpen(false)}
-                className="px-4 py-2 bg-neutral-100 dark:bg-white/5 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-semibold cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

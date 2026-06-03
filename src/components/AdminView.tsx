@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Socket } from 'socket.io-client';
 import { Track, PlaybackState, PairedDevice } from '../types';
-import { apiFetch } from '../utils';
+import { validateAdminAccess } from '../lib/firebaseService';
 import GlassCard from './GlassCard';
 import WaveTuneLogo from './WaveTuneLogo';
 import {
@@ -58,18 +58,18 @@ export default function AdminView({ socket, queue, playbackState, devices, onAle
   const [historyList, setHistoryList] = useState<Track[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  const fetchHistory = async () => {
+  const fetchHistory = () => {
     setLoadingHistory(true);
     try {
-      const res = await apiFetch('/api/admin/history');
-      if (res.ok) {
-        const data = await res.json();
-        setHistoryList(data.history || []);
-      } else {
-        onAlert('Failed to load playback history from server.', 'error');
-      }
+      const playedTracks = queue.filter(t => t.status === 'played');
+      playedTracks.sort((a, b) => {
+        const aPlayed = (a as any).playedAt ? new Date((a as any).playedAt).getTime() : new Date(a.addedAt).getTime();
+        const bPlayed = (b as any).playedAt ? new Date((b as any).playedAt).getTime() : new Date(b.addedAt).getTime();
+        return bPlayed - aPlayed;
+      });
+      setHistoryList(playedTracks.slice(0, 20));
     } catch (err) {
-      onAlert('Failed to connect to server history endpoint.', 'error');
+      onAlert('Failed to update playback history.', 'error');
     } finally {
       setLoadingHistory(false);
     }
@@ -158,21 +158,13 @@ export default function AdminView({ socket, queue, playbackState, devices, onAle
 
     setIsLoggingIn(true);
     try {
-      const res = await apiFetch('/api/admin/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ password }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        localStorage.setItem('sonicstream_admin_token', data.token);
+      const res = await validateAdminAccess(password);
+      if (res.success) {
+        localStorage.setItem('sonicstream_admin_token', 'sonicstream-admin-authenticated-token');
         setIsAuthenticated(true);
         onAlert('CMS System authenticated successfully.', 'success');
       } else {
-        onAlert(data.error || 'Invalid administrator password.', 'error');
+        onAlert(res.error || 'Invalid administrator password.', 'error');
       }
     } catch (err) {
       onAlert('Failed to connect to authentication server.', 'error');

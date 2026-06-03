@@ -27,8 +27,6 @@ interface SettingsProps {
   theme: 'light' | 'dark';
   activeStreamLimit: string;
   setActiveStreamLimit: (limit: string) => void;
-  backendUrl: string;
-  setBackendUrl: (url: string) => void;
 }
 
 export default function Settings({
@@ -39,14 +37,11 @@ export default function Settings({
   theme,
   activeStreamLimit,
   setActiveStreamLimit,
-  backendUrl,
-  setBackendUrl,
 }: SettingsProps) {
   const [allowDuplicates, setAllowDuplicates] = useState(false);
   const [systemAutoplay, setSystemAutoplay] = useState(true);
   const [maxVolumeLimit, setMaxVolumeLimit] = useState(100);
   const [isClearing, setIsClearing] = useState(false);
-  const [tempBackendUrl, setTempBackendUrl] = useState(backendUrl);
 
   const pendingCount = queue.filter(t => t.status === 'queued').length;
   const playedCount = queue.filter(t => t.status === 'played').length;
@@ -186,45 +181,20 @@ export default function Settings({
                 </select>
               </div>
 
-              {/* Directive 5: GitHub Pages & Custom Backend Connection URL */}
+              {/* Directive 5: Firebase Database Configuration Information */}
               <div className="flex flex-col gap-3 py-3 pt-5 border-t border-dashed border-neutral-500/10">
                 <div>
                   <span className={`block text-sm font-semibold mb-0.5 flex items-center gap-1.5 ${theme === 'light' ? 'text-black' : 'text-white'}`}>
-                    <Server className="w-4 h-4 text-purple-400" /> Backend Service Connection URL
+                    <Database className="w-4 h-4 text-emerald-400" /> Firebase Cloud Infrastructure
                   </span>
                   <span className="text-[11px] text-neutral-400 font-sans block leading-relaxed max-w-xl">
-                    Configure the active API / Socket.io server to bridge your audio system. This is crucial when hosting this app on static providers such as **GitHub Pages**, letting your static frontend speak to your self-hosted backend.
+                    WaveTune has been fully optimized to run on a serverless Real-Time Sync architecture. Playback synchronizations, music request queues, and remote pairing commands operate automatically inside Google cloud databases, ensuring maximum uptime and instant responses.
                   </span>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2 mt-1">
-                  <input
-                    type="text"
-                    value={tempBackendUrl}
-                    onChange={(e) => setTempBackendUrl(e.target.value)}
-                    className={`border rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-pink-500 transition-all font-mono grow ${
-                      theme === 'light' ? 'bg-white border-neutral-300 text-neutral-900' : 'bg-black/30 border-white/10 text-white'
-                    }`}
-                    placeholder="Leave empty for Same-Domain relative routing (Default)"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const value = tempBackendUrl.trim();
-                      setBackendUrl(value);
-                      if (!value) {
-                        onAlert('Backend URL has been reset to same-domain relative paths.', 'success');
-                      } else {
-                        onAlert(`Backend URL updated to: ${value}`, 'success');
-                      }
-                    }}
-                    className="px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 text-white rounded-xl text-xs font-semibold cursor-pointer shrink-0 shadow-md transition-all active:scale-95"
-                  >
-                    Save URL
-                  </button>
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 dark:text-emerald-400 rounded-xl text-xs font-semibold flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse block shrink-0" />
+                  <span>Google Cloud Firestore Sync Pipeline: Operational / Online</span>
                 </div>
-                <p className="text-[10px] text-neutral-500 font-mono">
-                  * Current active link: <span className="text-purple-400">{backendUrl || 'Same-Domain / Relative Roots (Highly recommended)'}</span>
-                </p>
               </div>
             </div>
           </GlassCard>

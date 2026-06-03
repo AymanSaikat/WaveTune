@@ -1,0 +1,171 @@
+{
+  "entities": {
+    "Track": {
+      "title": "Track",
+      "description": "Represents a music track inside the shared collaborative queue",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the track"
+        },
+        "title": {
+          "type": "string",
+          "description": "Dynamic title of the resolved music"
+        },
+        "artist": {
+          "type": "string",
+          "description": "Artist of the track"
+        },
+        "url": {
+          "type": "string",
+          "description": "Original user search link or Youtube URL"
+        },
+        "youtubeId": {
+          "type": "string",
+          "description": "Playing YouTube Video ID"
+        },
+        "artworkUrl": {
+          "type": "string",
+          "description": "Album Cover art representation"
+        },
+        "duration": {
+          "type": "integer",
+          "description": "Duration in seconds"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["queued", "playing", "paused", "played"],
+          "description": "Play status"
+        },
+        "requestedBy": {
+          "type": "string",
+          "description": "Name of guest who added the track"
+        },
+        "addedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO timestamp when first added"
+        },
+        "votes": {
+          "type": "integer",
+          "description": "Count of votes/upvotes"
+        },
+        "playedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO timestamp when marked as played"
+        },
+        "originalName": {
+          "type": "string",
+          "description": "Metadata unmodified name"
+        },
+        "originalArtist": {
+          "type": "string",
+          "description": "Metadata unmodified artist"
+        },
+        "originalCover": {
+          "type": "string",
+          "description": "Metadata unmodified artwork link"
+        },
+        "originalLabel": {
+          "type": "string",
+          "description": "Record publisher or catalog"
+        },
+        "previewUrl": {
+          "type": "string",
+          "description": "Playable direct file audio stream link"
+        }
+      },
+      "required": ["id", "title", "artist", "youtubeId", "status", "requestedBy", "addedAt", "votes"]
+    },
+    "PlaybackState": {
+      "title": "PlaybackState",
+      "description": "Global audio control and current session playing status",
+      "type": "object",
+      "properties": {
+        "currentTrackId": {
+          "type": "string",
+          "description": "Currently active Track ID"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["playing", "paused", "stopped"],
+          "description": "Playback activity state"
+        },
+        "progress": {
+          "type": "integer",
+          "description": "Elapsed seconds of the active track"
+        },
+        "volume": {
+          "type": "integer",
+          "description": "Sound level output scale (0-100)"
+        },
+        "activeDeviceId": {
+          "type": "string",
+          "description": "Coupled Player UUID target"
+        }
+      },
+      "required": ["status", "progress", "volume"]
+    },
+    "AdminConfig": {
+      "title": "AdminConfig",
+      "description": "Administrative hosting passcode credential details",
+      "type": "object",
+      "properties": {
+        "password": {
+          "type": "string",
+          "description": "Host CMS login passcode"
+        }
+      },
+      "required": ["password"]
+    },
+    "PairedDevice": {
+      "title": "PairedDevice",
+      "description": "Secondary browser playing device or display screen",
+      "type": "object",
+      "properties": {
+        "deviceId": {
+          "type": "string",
+          "description": "Device hardware random UUID"
+        },
+        "deviceName": {
+          "type": "string",
+          "description": "Dynamic human readable name"
+        },
+        "pairingCode": {
+          "type": "string",
+          "description": "4-digit verification code"
+        },
+        "connectedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Connection timestamp"
+        },
+        "isOnline": {
+          "type": "boolean",
+          "description": "Online feedback state"
+        }
+      },
+      "required": ["deviceId", "deviceName", "pairingCode", "connectedAt", "isOnline"]
+    }
+  },
+  "firestore": {
+    "/queue/{trackId}": {
+      "schema": "Track",
+      "description": "Global collaborative playlist queue entries"
+    },
+    "/playbackState/current": {
+      "schema": "PlaybackState",
+      "description": "State variable document governing sync player control"
+    },
+    "/playbackState/adminConfig": {
+      "schema": "AdminConfig",
+      "description": "State variable document storing the admin passcode credential"
+    },
+    "/devices/{deviceId}": {
+      "schema": "PairedDevice",
+      "description": "Registered active rendering screens"
+    }
+  }
+}

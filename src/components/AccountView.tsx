@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { apiFetch } from '../utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { modifyAdminSecret } from '../lib/firebaseService';
 import { useSessionTimer } from '../hooks/useSessionTimer';
 import { 
   User, 
@@ -105,25 +105,14 @@ export default function AccountView({
 
     setIsUpdatingPass(true);
     try {
-      const res = await apiFetch('/api/admin/change-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          currentPassword: currentPass,
-          newPassword: newPass,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        onAlert('Administrative protection passcode updated successfully.', 'success');
+      const res = await modifyAdminSecret(currentPass, newPass);
+      if (res.success) {
+        onAlert('Administrative protection passcode updated successfully on Firestore database.', 'success');
         setCurrentPass('');
         setNewPass('');
         setConfirmPass('');
       } else {
-        onAlert(data.error || 'Failed to modify passcode. Please confirm your current passcode.', 'error');
+        onAlert(res.error || 'Failed to modify passcode on database. Please check current password.', 'error');
       }
     } catch (err) {
       onAlert('Connection failure during passcode modification procedure.', 'error');
