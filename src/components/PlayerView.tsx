@@ -33,6 +33,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   const [localProgress, setLocalProgress] = useState(0);
   const [muted, setMuted] = useState(false);
   const [deviceName, setDeviceName] = useState('');
+  const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
 
   // Device UUID configuration
   const deviceIdRef = useRef<string>('');
@@ -83,9 +84,14 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
         audio.load();
       }
 
-      audio.play().catch((err) => {
-        console.warn('Browser policy temporarily blocked direct audio auto-play, waiting for focus:', err);
-      });
+      audio.play()
+        .then(() => {
+          setAudioAutoplayBlocked(false);
+        })
+        .catch((err) => {
+          console.warn('Browser policy temporarily blocked direct audio auto-play, waiting for focus:', err);
+          setAudioAutoplayBlocked(true);
+        });
     } else {
       audio.pause();
     }
@@ -243,6 +249,39 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
         style={getGlowStyles()}
       />
 
+      {/* Autoplay Unlock Overlay Gesture Trigger */}
+      {audioAutoplayBlocked && (
+        <div className="absolute inset-0 bg-neutral-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-center rounded-3xl">
+          <div className="max-w-sm space-y-4">
+            <div className="w-16 h-16 bg-pink-500/10 border border-pink-500/30 rounded-full flex items-center justify-center mx-auto text-pink-400 animate-bounce">
+              <Volume2 className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-bold font-sans text-white">Unlock Live Audio</h3>
+            <p className="text-xs text-neutral-400 font-mono leading-relaxed">
+              Browser-level security policies require a direct click gesture to authorize audio playback and custom hardware speaker routing.
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                const audio = audioRef.current;
+                if (audio) {
+                  try {
+                    await audio.play();
+                    setAudioAutoplayBlocked(false);
+                    onAlert('Sound playback successfully authorized & unlocked!', 'success');
+                  } catch (e) {
+                    console.error('Failed to manually trigger play:', e);
+                  }
+                }
+              }}
+              className="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-95 text-white font-bold rounded-2xl text-xs font-sans transition-all cursor-pointer shadow-lg active:scale-95"
+            >
+              Start Streaming Sound
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Grid container */}
       <div className="relative z-10 w-full flex-1 flex flex-col justify-between space-y-8">
         
@@ -345,6 +384,10 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
                   )}
                 </div>
 
+                <div className="mt-2 text-[10px] text-neutral-500 font-sans leading-relaxed text-center">
+                  * Note: If browser policy blocks auto-playback, click the YouTube play button inside the frame above to start the movie.
+                </div>
+
                 <div className="flex justify-end gap-3 mt-3">
                   <button
                     onClick={() => setMuted(!muted)}
@@ -364,7 +407,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
               </GlassCard>
 
               {/* Direct Web Audio Output Device Routing Engine */}
-              <DeviceSelector audioElementRef={audioRef} theme={theme} />
+              <DeviceSelector audioElementRef={audioRef} theme={theme} onAlert={onAlert} />
 
               {/* Slider meter tracker */}
               <div className="space-y-1">

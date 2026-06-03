@@ -5,9 +5,10 @@ import { Volume2, Settings, HelpCircle, Shield, RefreshCw, Check } from 'lucide-
 interface DeviceSelectorProps {
   audioElementRef?: React.RefObject<HTMLAudioElement | null>;
   theme: 'light' | 'dark';
+  onAlert?: (msg: string, type: 'success' | 'error') => void;
 }
 
-export default function DeviceSelector({ audioElementRef, theme }: DeviceSelectorProps) {
+export default function DeviceSelector({ audioElementRef, theme, onAlert }: DeviceSelectorProps) {
   const {
     devices,
     selectedDeviceId,
@@ -20,7 +21,14 @@ export default function DeviceSelector({ audioElementRef, theme }: DeviceSelecto
 
   const handleDeviceChange = async (deviceId: string) => {
     const audioEl = audioElementRef?.current;
-    await selectDevice(deviceId, audioEl);
+    try {
+      await selectDevice(deviceId, audioEl);
+      const matchedDevice = devices.find(d => d.deviceId === deviceId);
+      const label = matchedDevice ? matchedDevice.label : 'Selected speaker';
+      onAlert?.(`Successfully shifted sound output to: ${label}`, 'success');
+    } catch (err: any) {
+      onAlert?.(`Failed to select speaker: ${err?.message || err}`, 'error');
+    }
   };
 
   const isChromeOrChromium = () => {
