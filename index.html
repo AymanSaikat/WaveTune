@@ -4,6 +4,54 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WaveTune - Live Audio Request System</title>
+    <script>
+      (function() {
+        // Immediately configure top-level error catcher to swallow any read-only property write crashes from the preview environment
+        var originalOnError = window.onerror;
+        var swallowRegex = /Cannot set property fetch|fetch of #<Window>|has only a getter|Cannot redefine property: fetch/i;
+        
+        window.onerror = function(message, source, lineno, colno, error) {
+          var msgStr = (message || '').toString();
+          if (swallowRegex.test(msgStr)) {
+            console.warn('[WaveTune Early Safeguard] Caught and swallowed read-only property assignment error:', msgStr);
+            return true; // Prevent default error bubbling
+          }
+          if (originalOnError) {
+            return originalOnError.apply(this, arguments);
+          }
+          return false;
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event.reason;
+          var reasonStr = reason && reason.message ? reason.message : String(reason || '');
+          if (swallowRegex.test(reasonStr)) {
+            console.warn('[WaveTune Early Safeguard] Caught and swallowed unhandled fetch rejection:', reasonStr);
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+
+        try {
+          var originalFetch = window.fetch;
+          var customFetch = originalFetch;
+          Object.defineProperty(window, 'fetch', {
+            get: function() {
+              return customFetch;
+            },
+            set: function(v) {
+              customFetch = v;
+              console.log('[WaveTune Safeguard] window.fetch overridden by external framework or extension.');
+            },
+            configurable: true,
+            enumerable: true
+          });
+          console.log('[WaveTune Safeguard] Writable window.fetch custom getter/setter bound successfully.');
+        } catch (e) {
+          console.warn('[WaveTune Safeguard] Direct window.fetch redefinition bypassed. Relying entirely on onerror safeguard.');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

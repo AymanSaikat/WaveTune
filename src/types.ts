@@ -23,6 +23,7 @@ export interface PlaybackState {
   progress: number; // in seconds
   volume: number; // 0 to 100
   activeDeviceId: string | null;
+  activeStreamLimit?: string;
 }
 
 export interface PairedDevice {

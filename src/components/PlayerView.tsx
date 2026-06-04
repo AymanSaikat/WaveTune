@@ -40,11 +40,19 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
     return (localStorage.getItem('wavetune_audio_playback_mode') as 'routed' | 'youtube') || 'youtube';
   });
 
+  const [userGestureActive, setUserGestureActive] = useState(false);
+
   // Device UUID configuration
   const deviceIdRef = useRef<string>('');
   
   // HTML5 audio container backing to guarantee robust local sound playback and output route control
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Track the playback state status with a mutable React Ref to eliminate stale closure issues in window-level gesture handlers
+  const playbackStatusRef = useRef(playbackState.status);
+  useEffect(() => {
+    playbackStatusRef.current = playbackState.status;
+  }, [playbackState.status]);
 
   useEffect(() => {
     // Instantiate stable client audio component
@@ -61,10 +69,11 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
         .catch((err: any) => console.warn('Stored speaker output sync failed:', err));
     }
 
-    // Auto-unlock audio playback silently upon first user interactions
+    // Auto-unlock audio playback silently upon first user interactions based on dynamic status reference
     const handleGesture = () => {
-      if (audio && playbackState.status === 'playing' && audio.paused) {
-        audio.play().catch(() => {});
+      setUserGestureActive(true);
+      if (audio && playbackStatusRef.current === 'playing' && audio.paused) {
+        audio.play().catch((err) => console.log('[Autoplay Unlock] Playback bypass postponed:', err));
       }
     };
     window.addEventListener('click', handleGesture);
@@ -82,6 +91,12 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   // Dynamically resolve high-quality streamable YouTube audio for selected output speaker routing
   useEffect(() => {
     if (!currentTrack) {
+      setResolvedAudioUrl('');
+      return;
+    }
+
+    // Bypassing third-party server-side/client-side audio stream loaders completely when running in default YouTube frame mode
+    if (audioPlaybackMode === 'youtube') {
       setResolvedAudioUrl('');
       return;
     }
@@ -364,6 +379,19 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
     }
   }, [playbackState.progress]);
 
+  // Synchronize active device pairing state from synced playback state across page reloads
+  useEffect(() => {
+    const storedId = localStorage.getItem('musesync_device_uuid');
+    if (storedId && playbackState.activeDeviceId === storedId) {
+      setIsPaired(true);
+      if (!pairedHost) {
+        setPairedHost('Active Session Host');
+      }
+    } else {
+      setIsPaired(false);
+    }
+  }, [playbackState.activeDeviceId, pairedHost]);
+
   // Time formatter
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -421,25 +449,38 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
             
             {/* Visual Column / Album Cover / Glowing backdrop */}
             <div className="flex flex-col items-center justify-center space-y-6">
-              <div className="relative group aspect-square w-64 md:w-80 rounded-2xl overflow-hidden border border-white/15 shadow-[0_15px_45px_rgba(0,0,0,0.6)]">
-                <img
-                  src={currentTrack.artworkUrl}
-                  alt={currentTrack.title}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600';
-                  }}
-                />
-                
-                {/* Visual playback state overlay */}
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
-                  {playbackState.status === 'playing' ? (
-                    <Pause className="w-12 h-12 text-white stroke-[1.5]" />
-                  ) : (
-                    <Play className="w-12 h-12 text-white stroke-[1.5]" />
-                  )}
-                </div>
+              <div className="relative group aspect-square w-64 md:w-80 rounded-2xl overflow-hidden border border-white/15 bg-black shadow-[0_15px_45px_rgba(0,0,0,0.6)]">
+                {audioPlaybackMode === 'youtube' ? (
+                  <iframe
+                    id="musesync-yt-player-visible"
+                    src={getEmbedUrl()}
+                    className="w-full h-full border-0 absolute inset-0"
+                    allow="autoplay; encrypted-media; picture-in-picture"
+                    title="Active Video Player"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <>
+                    <img
+                      src={currentTrack.artworkUrl}
+                      alt={currentTrack.title}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=600';
+                      }}
+                    />
+                    
+                    {/* Visual playback state overlay */}
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+                      {playbackState.status === 'playing' ? (
+                        <Pause className="w-12 h-12 text-white stroke-[1.5]" />
+                      ) : (
+                        <Play className="w-12 h-12 text-white stroke-[1.5]" />
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Dynamic sound bar wave visualization matches playing state */}
@@ -465,8 +506,19 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
                 </p>
               </div>
 
+              {/* High visibility interactive gesture unlock overlay */}
+              {!userGestureActive && playbackState.status === 'playing' && (
+                <button
+                  type="button"
+                  onClick={() => setUserGestureActive(true)}
+                  className="w-full text-center py-2.5 px-4 border border-pink-500/20 bg-pink-500/10 text-pink-600 dark:text-pink-400 rounded-xl text-xs font-mono font-bold animate-pulse hover:bg-pink-500/25 transition-all cursor-pointer"
+                >
+                  🎧 Click here to unlock autoplay audio & start streaming sound!
+                </button>
+              )}
+
               {/* Hidden background YouTube Player to process native playback of selected music without showing video */}
-              {currentTrack.youtubeId && (
+              {audioPlaybackMode === 'routed' && currentTrack.youtubeId && (
                 <div 
                   style={{ 
                     position: 'absolute', 
@@ -483,7 +535,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
                   }}
                 >
                   <iframe
-                    id="musesync-yt-player"
+                    id="musesync-yt-player-bk"
                     src={getEmbedUrl()}
                     className="w-full h-full"
                     allow="autoplay; encrypted-media; picture-in-picture"

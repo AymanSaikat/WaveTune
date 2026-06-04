@@ -26,7 +26,8 @@ export async function initializeFirebaseSchema() {
         status: 'stopped',
         progress: 0,
         volume: 75,
-        activeDeviceId: null
+        activeDeviceId: null,
+        activeStreamLimit: 'unlimited'
       });
     }
 
@@ -435,5 +436,18 @@ export async function modifyAdminSecret(currentPasswordInput: string, newPasswor
     return { success: true };
   } catch (error) {
     return { success: false, error: 'Cloud database security authentication write failed.' };
+  }
+}
+
+// 16. Admin panel updates active stream limit
+export async function updateActiveStreamLimit(limit: string) {
+  try {
+    const playRef = doc(db, 'playbackState', 'current');
+    await updateDoc(playRef, {
+      activeStreamLimit: limit
+    });
+    console.log(`[Firestore] Successfully synchronized active stream limit constraints: ${limit}`);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'playbackState/current');
   }
 }

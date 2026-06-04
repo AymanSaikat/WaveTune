@@ -22,7 +22,8 @@ import {
   verifyAndPairCode,
   reportPlaybackProgress,
   resolveCompletedTrack,
-  validateAdminAccess
+  validateAdminAccess,
+  updateActiveStreamLimit
 } from './lib/firebaseService';
 import {
   Music,
@@ -104,6 +105,15 @@ export default function App() {
   const handleThemeChange = (nextTheme: 'dark' | 'light') => {
     setTheme(nextTheme);
     localStorage.setItem('sonicstream_admin_theme', nextTheme);
+  };
+
+  const handleSetActiveStreamLimit = async (limit: string) => {
+    setActiveStreamLimit(limit);
+    try {
+      await updateActiveStreamLimit(limit);
+    } catch (err) {
+      console.error('Failed to update active stream limit in Firestore:', err);
+    }
   };
 
   useEffect(() => {
@@ -214,6 +224,9 @@ export default function App() {
 
     const unsubPlayback = subscribeToPlaybackState((updatedState) => {
       setPlaybackState(updatedState);
+      if (updatedState.activeStreamLimit) {
+        setActiveStreamLimit(updatedState.activeStreamLimit);
+      }
       
       const targetTrack = queueRef.current.find(t => t.id === updatedState.currentTrackId);
       virtualSocketRef.current.trigger('device_playback_command', {
@@ -651,7 +664,7 @@ export default function App() {
                   onAlert={showAlert}
                   theme={theme}
                   activeStreamLimit={activeStreamLimit}
-                  setActiveStreamLimit={setActiveStreamLimit}
+                  setActiveStreamLimit={handleSetActiveStreamLimit}
                 />
               )}
 
@@ -667,7 +680,7 @@ export default function App() {
                   roomDesc={roomDesc}
                   setRoomDesc={setRoomDesc}
                   activeStreamLimit={activeStreamLimit}
-                  setActiveStreamLimit={setActiveStreamLimit}
+                  setActiveStreamLimit={handleSetActiveStreamLimit}
                   onLogout={handleAdminLogout}
                   onAlert={showAlert}
                   queue={queue}

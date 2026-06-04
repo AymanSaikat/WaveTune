@@ -125,6 +125,17 @@ export default function PublicView({ socket, queue, playbackState, onAlert, them
   const handleConfirmRequest = () => {
     if (!resolvedTrack || !socket) return;
 
+    // Enforce active stream limit settings synced from host CMS
+    const limitStr = playbackState.activeStreamLimit || 'unlimited';
+    if (limitStr !== 'unlimited') {
+      const limit = parseInt(limitStr, 10);
+      const activeCount = queue.filter(t => t.status === 'queued').length;
+      if (activeCount >= limit) {
+        onAlert(`The jukebox request queue is currently full (${activeCount}/${limit} song capacity). Please wait for some tracks to be completed!`, 'error');
+        return;
+      }
+    }
+
     socket.emit('add_request', {
       title: resolvedTrack.title,
       artist: resolvedTrack.artist,
@@ -137,6 +148,7 @@ export default function PublicView({ socket, queue, playbackState, onAlert, them
       originalArtist: resolvedTrack.originalArtist,
       originalCover: resolvedTrack.originalCover,
       originalLabel: resolvedTrack.originalLabel,
+      previewUrl: resolvedTrack.previewUrl,
     });
 
     onAlert(`"${resolvedTrack.title}" requested successfully!`, 'success');

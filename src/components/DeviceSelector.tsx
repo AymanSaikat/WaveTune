@@ -27,6 +27,8 @@ interface AudioOutputDevice {
 }
 
 export default function DeviceSelector({ audioElementRef, theme, onAlert }: DeviceSelectorProps) {
+  const isSelfInsideIframe = typeof window !== 'undefined' && window.self !== window.top;
+  
   const [devices, setDevices] = useState<AudioOutputDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>(() => {
     return localStorage.getItem('wavetune_output_device_id') || 'default';
@@ -278,6 +280,20 @@ export default function DeviceSelector({ audioElementRef, theme, onAlert }: Devi
 
       {/* Lifecycle Status Indicators */}
       <div className="mb-4">
+        {isSelfInsideIframe && (
+          <div className="mb-3 p-3 rounded-xl border border-blue-500/15 bg-blue-500/10 text-blue-800 dark:text-blue-300 font-sans text-xs flex flex-col gap-1.5 shadow-sm">
+            <p className="font-bold flex items-center gap-1.5 text-blue-900 dark:text-blue-200">
+              🌐 Simulator Frame Active (Speaker Discovery Restricted)
+            </p>
+            <p className="text-[10px] font-mono leading-relaxed opacity-90">
+              Your browser blocks direct output speaker listings and custom hardware routing (`setSinkId`) when running inside sandboxed simulator iframes.
+            </p>
+            <p className="text-[10px] font-sans font-bold text-pink-500 dark:text-pink-400">
+              💡 Fix: Click the "Open App" (with an arrow) button in the top-right corner of AI Studio to launch this tool in its own tab, granting full hardware detection!
+            </p>
+          </div>
+        )}
+
         {statusState === 'loading' && (
           <div className="flex items-center gap-2 p-2.5 rounded-xl text-xs font-mono bg-neutral-100 dark:bg-white/5 opacity-80">
             <Loader2 className="w-4 h-4 animate-spin text-pink-500" />

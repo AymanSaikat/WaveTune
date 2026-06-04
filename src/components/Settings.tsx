@@ -38,9 +38,17 @@ export default function Settings({
   activeStreamLimit,
   setActiveStreamLimit,
 }: SettingsProps) {
-  const [allowDuplicates, setAllowDuplicates] = useState(false);
-  const [systemAutoplay, setSystemAutoplay] = useState(true);
-  const [maxVolumeLimit, setMaxVolumeLimit] = useState(100);
+  const [allowDuplicates, setAllowDuplicates] = useState(() => {
+    return localStorage.getItem('wavetune_allow_duplicates') === 'true';
+  });
+  const [systemAutoplay, setSystemAutoplay] = useState(() => {
+    const saved = localStorage.getItem('wavetune_system_autoplay');
+    return saved !== 'false'; // default true
+  });
+  const [maxVolumeLimit, setMaxVolumeLimit] = useState(() => {
+    const saved = localStorage.getItem('wavetune_max_volume_limit');
+    return saved ? parseInt(saved, 10) : 100;
+  });
   const [isClearing, setIsClearing] = useState(false);
 
   const pendingCount = queue.filter(t => t.status === 'queued').length;
@@ -98,8 +106,10 @@ export default function Settings({
                 <button
                   type="button"
                   onClick={() => {
-                    setSystemAutoplay(!systemAutoplay);
-                    onAlert(`Smart Autoplay ${!systemAutoplay ? 'enabled' : 'disabled'}.`, 'success');
+                    const next = !systemAutoplay;
+                    setSystemAutoplay(next);
+                    localStorage.setItem('wavetune_system_autoplay', String(next));
+                    onAlert(`Smart Autoplay ${next ? 'enabled' : 'disabled'}.`, 'success');
                   }}
                   className={`w-14 h-7 p-1 rounded-full cursor-pointer transition-all flex h-auto ${
                     systemAutoplay 
@@ -124,7 +134,9 @@ export default function Settings({
                 <button
                   type="button"
                   onClick={() => {
-                    setAllowDuplicates(!allowDuplicates);
+                    const next = !allowDuplicates;
+                    setAllowDuplicates(next);
+                    localStorage.setItem('wavetune_allow_duplicates', String(next));
                     onAlert(`Duplicate Song Policy updated.`, 'success');
                   }}
                   className={`w-14 h-7 p-1 rounded-full cursor-pointer transition-all flex h-auto ${
@@ -150,7 +162,11 @@ export default function Settings({
                   min="50"
                   max="100"
                   value={maxVolumeLimit}
-                  onChange={(e) => setMaxVolumeLimit(parseInt(e.target.value))}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    setMaxVolumeLimit(val);
+                    localStorage.setItem('wavetune_max_volume_limit', String(val));
+                  }}
                   className="w-full accent-pink-500 h-1 bg-neutral-800 rounded-lg cursor-pointer"
                 />
               </div>
