@@ -65,13 +65,9 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
         try {
           const message: any = {
             event: 'command',
-            func: func
+            func: func,
+            args: args || []
           };
-          if (args && args.length > 0) {
-            message.args = args;
-          } else {
-            message.args = '';
-          }
           iframe.contentWindow.postMessage(JSON.stringify(message), '*');
         } catch (e) {
           console.warn(`[YouTube API Controller] Failed to post message to ${id}:`, e);
