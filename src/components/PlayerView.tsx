@@ -112,7 +112,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
       if (shouldMute) {
         sendPlayerCommand('mute');
       } else {
-        sendPlayerCommand('unmute');
+        sendPlayerCommand('unMute');
         sendPlayerCommand('setVolume', [playbackState.volume]);
       }
     };
@@ -121,12 +121,16 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
     // Re-trigger slightly after to safeguard iframe bootstrap window
     const t1 = setTimeout(syncPlayerState, 800);
     const t2 = setTimeout(syncPlayerState, 2000);
+    const t3 = setTimeout(syncPlayerState, 4500); // Slower networks
+    const interval = setInterval(syncPlayerState, 8000); // Fallback sync
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      clearTimeout(t3);
+      clearInterval(interval);
     };
-  }, [playbackState.status, muted, playbackState.volume, audioPlaybackMode, iframeSrc]);
+  }, [playbackState.status, muted, playbackState.volume, audioPlaybackMode, iframeSrc, userGestureActive]);
 
   useEffect(() => {
     // Instantiate stable client audio component
