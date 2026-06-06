@@ -3,6 +3,7 @@ import { Socket } from 'socket.io-client';
 import { Track, PlaybackState } from '../types';
 import GlassCard from './GlassCard';
 import AudioVisualizer from './AudioVisualizer';
+import AudioDiagnostics from './AudioDiagnostics';
 import DeviceSelector from './DeviceSelector';
 import {
   Tv,
@@ -49,6 +50,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   
   // HTML5 audio container backing to guarantee robust local sound playback and output route control
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioElementState, setAudioElementState] = useState<HTMLAudioElement | null>(null);
 
   // Track the playback state status with a mutable React Ref to eliminate stale closure issues in window-level gesture handlers
   const playbackStatusRef = useRef(playbackState.status);
@@ -137,8 +139,11 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   useEffect(() => {
     // Instantiate stable client audio component
     const audio = new Audio();
+    // Use crossOrigin anonymous to allow Web Audio API access
+    audio.crossOrigin = 'anonymous';
     audio.volume = playbackState.volume / 100;
     audioRef.current = audio;
+    setAudioElementState(audio);
 
     // Listen for real audio stream errors (403s, CORS, 404s, stalls) that happen with un-stable proxy streams
     const handleAudioError = (e: any) => {
@@ -183,6 +188,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
       audio.pause();
       audio.src = '';
       audioRef.current = null;
+      setAudioElementState(null);
     };
   }, [audioPlaybackMode, onAlert]);
 
@@ -586,7 +592,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
 
               {/* Dynamic sound bar wave visualization matches playing state */}
               <div className="w-full max-w-sm">
-                <AudioVisualizer isPlaying={playbackState.status === 'playing'} artworkUrl={currentTrack.artworkUrl} />
+                <AudioVisualizer isPlaying={playbackState.status === 'playing'} artworkUrl={currentTrack.artworkUrl} audioElement={audioElementState} />
               </div>
             </div>
 
@@ -718,6 +724,25 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
 
               {/* Direct Web Audio Output Device Routing Engine */}
               <DeviceSelector audioElementRef={audioRef} theme={theme} onAlert={onAlert} />
+
+              <div className="mt-4">
+                <details className="cursor-pointer group">
+                  <summary className="text-[10px] font-bold text-neutral-400 group-hover:text-neutral-500 uppercase tracking-widest pl-1 mb-2 select-none">
+                    Audio Diagnostics Check
+                  </summary>
+                  <AudioDiagnostics 
+                    audioElement={audioElementState} 
+                    audioSourceParams={{ url: resolvedAudioUrl, origin: window.location.origin }}
+                    onFallbackTriggered={() => {
+                      if (audioPlaybackMode === 'routed') {
+                        onAlert('Audio Source Timeout! Falling back to visual YouTube player for stable sound.', 'error');
+                        setAudioPlaybackMode('youtube');
+                        localStorage.setItem('wavetune_audio_playback_mode', 'youtube');
+                      }
+                    }}
+                  />
+                </details>
+              </div>
 
               {/* Slider meter tracker */}
               <div className="space-y-1">
