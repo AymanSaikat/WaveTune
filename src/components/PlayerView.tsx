@@ -96,7 +96,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
       // Mute the iframe if routed, OR if user has explicitly muted
       const overrideMute = audioPlaybackMode === 'routed' ? '1' : (muted ? '1' : '0');
       const startSec = Math.floor(playbackState.progress) || 0;
-      const url = `https://www.youtube.com/embed/${currentTrack.youtubeId}?autoplay=${autoplay}&mute=${overrideMute}&start=${startSec}&controls=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
+      const url = `https://www.youtube.com/embed/${currentTrack.youtubeId}?autoplay=${autoplay}&mute=${overrideMute}&start=${startSec}&controls=1&enablejsapi=1&origin=${window.location.origin}`;
       setIframeSrc(url);
     }
   }, [currentTrack?.id, audioPlaybackMode]);
@@ -564,7 +564,6 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
                     className="w-full h-full border-0 absolute inset-0"
                     allow="autoplay; encrypted-media; picture-in-picture"
                     title="Active Video Player"
-                    referrerPolicy="no-referrer"
                   />
                 ) : (
                   <>
@@ -647,7 +646,6 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
                     className="w-full h-full"
                     allow="autoplay; encrypted-media; picture-in-picture"
                     title="Hidden Track Player"
-                    referrerPolicy="no-referrer"
                   />
                 </div>
               )}

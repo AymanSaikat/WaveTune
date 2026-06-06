@@ -183,6 +183,32 @@ export default function AdminView({ socket, queue, playbackState, devices, onAle
     }
   };
 
+  const testAudioPath = () => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContextClass();
+      
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+
+      gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + 1);
+
+      onAlert('System beep dispatched via Web Audio pipeline.', 'success');
+    } catch (e) {
+      onAlert('Web Audio API not supported or blocked by browser.', 'error');
+    }
+  };
+
   // Formatter for seconds
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -551,6 +577,13 @@ export default function AdminView({ socket, queue, playbackState, devices, onAle
                     </button>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={testAudioPath}
+                  className="mt-4 w-full py-2.5 rounded-xl text-[11px] font-bold text-center bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all cursor-pointer"
+                >
+                  Test Audio Path
+                </button>
               </div>
 
               {/* iOS AirPlay Cast Device Pairer */}
@@ -972,6 +1005,13 @@ export default function AdminView({ socket, queue, playbackState, devices, onAle
                   </button>
                 ))}
               </div>
+              <button
+                type="button"
+                onClick={testAudioPath}
+                className="mt-3 w-full py-1.5 text-[10px] font-bold text-center bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded hover:bg-blue-500/20 transition-all cursor-pointer"
+              >
+                Test Audio Path
+              </button>
             </div>
 
           </div>
