@@ -57,20 +57,22 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   }, [playbackState.status]);
 
   // Command sender function to update iframe state without reload
-  const sendPlayerCommand = (func: string, args: any[] = []) => {
+  const sendPlayerCommand = (func: string, args?: any[]) => {
     const ids = ['musesync-yt-player-visible', 'musesync-yt-player-bk'];
     ids.forEach(id => {
       const iframe = document.getElementById(id) as HTMLIFrameElement | null;
       if (iframe && iframe.contentWindow) {
         try {
-          iframe.contentWindow.postMessage(
-            JSON.stringify({
-              event: 'command',
-              func: func,
-              args: args
-            }),
-            '*'
-          );
+          const message: any = {
+            event: 'command',
+            func: func
+          };
+          if (args && args.length > 0) {
+            message.args = args;
+          } else {
+            message.args = '';
+          }
+          iframe.contentWindow.postMessage(JSON.stringify(message), '*');
         } catch (e) {
           console.warn(`[YouTube API Controller] Failed to post message to ${id}:`, e);
         }
