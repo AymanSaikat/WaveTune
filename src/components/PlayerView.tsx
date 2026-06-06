@@ -41,6 +41,8 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   });
 
   const [userGestureActive, setUserGestureActive] = useState(false);
+  const [iframeSrc, setIframeSrc] = useState<string>('');
+  const lastTrackIdRef = useRef<string | null>(null);
 
   // Device UUID configuration
   const deviceIdRef = useRef<string>('');
@@ -53,6 +55,78 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   useEffect(() => {
     playbackStatusRef.current = playbackState.status;
   }, [playbackState.status]);
+
+  // Command sender function to update iframe state without reload
+  const sendPlayerCommand = (func: string, args: any[] = []) => {
+    const ids = ['musesync-yt-player-visible', 'musesync-yt-player-bk'];
+    ids.forEach(id => {
+      const iframe = document.getElementById(id) as HTMLIFrameElement | null;
+      if (iframe && iframe.contentWindow) {
+        try {
+          iframe.contentWindow.postMessage(
+            JSON.stringify({
+              event: 'command',
+              func: func,
+              args: args
+            }),
+            '*'
+          );
+        } catch (e) {
+          console.warn(`[YouTube API Controller] Failed to post message to ${id}:`, e);
+        }
+      }
+    });
+  };
+
+  // Keep a stable iframe source that ONLY reloads when the track ID transitions OR major playback mode changes.
+  // This completely prevents resetting the music back to 0s upon minor state updates.
+  useEffect(() => {
+    if (!currentTrack) {
+      setIframeSrc('');
+      lastTrackIdRef.current = null;
+      return;
+    }
+
+    if (currentTrack.id !== lastTrackIdRef.current) {
+      lastTrackIdRef.current = currentTrack.id;
+      const autoplay = playbackState.status === 'playing' ? '1' : '0';
+      const mute = audioPlaybackMode === 'routed' ? '1' : (muted ? '1' : '0');
+      const startSec = Math.floor(playbackState.progress) || 0;
+      const url = `https://www.youtube.com/embed/${currentTrack.youtubeId}?autoplay=${autoplay}&mute=${mute}&start=${startSec}&controls=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
+      setIframeSrc(url);
+    }
+  }, [currentTrack?.id, audioPlaybackMode]);
+
+  // Synchronize play/pause state in real-time without reloading the iframe!
+  useEffect(() => {
+    if (!currentTrack || !iframeSrc) return;
+
+    const syncPlayerState = () => {
+      if (playbackState.status === 'playing') {
+        sendPlayerCommand('playVideo');
+      } else {
+        sendPlayerCommand('pauseVideo');
+      }
+
+      const shouldMute = audioPlaybackMode === 'routed' || muted;
+      if (shouldMute) {
+        sendPlayerCommand('mute');
+      } else {
+        sendPlayerCommand('unmute');
+        sendPlayerCommand('setVolume', [playbackState.volume]);
+      }
+    };
+
+    syncPlayerState();
+    // Re-trigger slightly after to safeguard iframe bootstrap window
+    const t1 = setTimeout(syncPlayerState, 800);
+    const t2 = setTimeout(syncPlayerState, 2000);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [playbackState.status, muted, playbackState.volume, audioPlaybackMode, iframeSrc]);
 
   useEffect(() => {
     // Instantiate stable client audio component
@@ -376,8 +450,11 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   useEffect(() => {
     if (Math.abs(localProgress - playbackState.progress) > 3) {
       setLocalProgress(playbackState.progress);
+      if (audioPlaybackMode === 'youtube') {
+        sendPlayerCommand('seekTo', [playbackState.progress, true]);
+      }
     }
-  }, [playbackState.progress]);
+  }, [playbackState.progress, audioPlaybackMode]);
 
   // Synchronize active device pairing state from synced playback state across page reloads
   useEffect(() => {
@@ -453,7 +530,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
                 {audioPlaybackMode === 'youtube' ? (
                   <iframe
                     id="musesync-yt-player-visible"
-                    src={getEmbedUrl()}
+                    src={iframeSrc}
                     className="w-full h-full border-0 absolute inset-0"
                     allow="autoplay; encrypted-media; picture-in-picture"
                     title="Active Video Player"
@@ -536,7 +613,7 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
                 >
                   <iframe
                     id="musesync-yt-player-bk"
-                    src={getEmbedUrl()}
+                    src={iframeSrc}
                     className="w-full h-full"
                     allow="autoplay; encrypted-media; picture-in-picture"
                     title="Hidden Track Player"

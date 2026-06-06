@@ -123,7 +123,7 @@ export default function DeviceSelector({ audioElementRef, theme, onAlert }: Devi
         } catch (mediaErr) {
           console.warn('[Speaker Router] Microphone permission declined, fallback to generic labels:', mediaErr);
           setPermissionDeclined(true);
-          onAlert?.('Microphone authorization declined. Output names will remain generic.', 'error');
+          onAlert?.('Privacy mode active. Connected output streams will map using generic speaker IDs.', 'success');
         }
       }
 
