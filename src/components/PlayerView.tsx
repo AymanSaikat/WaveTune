@@ -80,6 +80,8 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
 
   // Keep a stable iframe source that ONLY reloads when the track ID transitions OR major playback mode changes.
   // This completely prevents resetting the music back to 0s upon minor state updates.
+  const lastPlaybackModeRef = useRef<'routed' | 'youtube'>(audioPlaybackMode);
+  
   useEffect(() => {
     if (!currentTrack) {
       setIframeSrc('');
@@ -87,12 +89,14 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
       return;
     }
 
-    if (currentTrack.id !== lastTrackIdRef.current) {
+    if (currentTrack.id !== lastTrackIdRef.current || audioPlaybackMode !== lastPlaybackModeRef.current) {
       lastTrackIdRef.current = currentTrack.id;
+      lastPlaybackModeRef.current = audioPlaybackMode;
       const autoplay = playbackState.status === 'playing' ? '1' : '0';
-      const mute = audioPlaybackMode === 'routed' ? '1' : (muted ? '1' : '0');
+      // Mute the iframe if routed, OR if user has explicitly muted
+      const overrideMute = audioPlaybackMode === 'routed' ? '1' : (muted ? '1' : '0');
       const startSec = Math.floor(playbackState.progress) || 0;
-      const url = `https://www.youtube.com/embed/${currentTrack.youtubeId}?autoplay=${autoplay}&mute=${mute}&start=${startSec}&controls=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
+      const url = `https://www.youtube.com/embed/${currentTrack.youtubeId}?autoplay=${autoplay}&mute=${overrideMute}&start=${startSec}&controls=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
       setIframeSrc(url);
     }
   }, [currentTrack?.id, audioPlaybackMode]);
@@ -135,9 +139,25 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
   useEffect(() => {
     // Instantiate stable client audio component
     const audio = new Audio();
-    // Do NOT set crossOrigin = 'anonymous' to prevent CORS block on standard media stream links
     audio.volume = playbackState.volume / 100;
     audioRef.current = audio;
+
+    // Listen for real audio stream errors (403s, CORS, 404s, stalls) that happen with un-stable proxy streams
+    const handleAudioError = (e: any) => {
+      console.error('[Speaker Stream] Fatal Audio Error on source:', audio.src, audio.error);
+      if (audioPlaybackMode === 'routed' && audio.src && !audio.src.includes('soundhelix')) {
+        onAlert('Direct audio stream was blocked by proxy (403/Error). Falling back to visual YouTube player for stable sound.', 'error');
+        setAudioPlaybackMode('youtube');
+        localStorage.setItem('wavetune_audio_playback_mode', 'youtube');
+      }
+    };
+    
+    const handleAudioStalled = () => {
+      console.warn('[Speaker Stream] Audio stalled/waiting... might be buffering or broken stream.');
+    };
+
+    audio.addEventListener('error', handleAudioError);
+    audio.addEventListener('stalled', handleAudioStalled);
 
     // Retrieve and restore saved sound sinkId
     const storedDeviceId = localStorage.getItem('wavetune_output_device_id');
@@ -160,11 +180,13 @@ export default function PlayerView({ socket, queue, playbackState, onAlert, them
     return () => {
       window.removeEventListener('click', handleGesture);
       window.removeEventListener('touchstart', handleGesture);
+      audio.removeEventListener('error', handleAudioError);
+      audio.removeEventListener('stalled', handleAudioStalled);
       audio.pause();
       audio.src = '';
       audioRef.current = null;
     };
-  }, []);
+  }, [audioPlaybackMode, onAlert]);
 
   // Dynamically resolve high-quality streamable YouTube audio for selected output speaker routing
   useEffect(() => {
